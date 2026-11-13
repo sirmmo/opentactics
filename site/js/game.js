@@ -40,6 +40,7 @@ export class Match {
    * spectate show everything, play nothing (watchers)
    * replay   { start, actions }: a recorded game to step through
    * onWatch(record)  open the replay of this game
+   * chat(text)  send a chat message (online games); shows a chat box
    */
   constructor(root, o) {
     Object.assign(this, o);
@@ -78,6 +79,7 @@ export class Match {
   destroy() {
     this.alive = false;
     clearTimeout(this.aiTimer);
+    clearInterval(this.timerTick);
     window.removeEventListener('keydown', this.onKey);
     window.removeEventListener('resize', this.onResize);
     this.root.replaceChildren();
@@ -95,6 +97,18 @@ export class Match {
     this.weatherEl = h('div', { class: 'weather hidden' });
     this.powerBtn = h('button', { class: 'power hidden', onclick: () => this.openPowers(), title: 'Powers' });
     this.curtain = h('div', { class: 'curtain hidden' });
+    this.clockEl = h('div', { class: 'clock hidden', title: 'Time left for this turn' });
+    this.chatEl = null;
+    if (this.chat) {
+      this.chatLog = h('ol', { class: 'chatlog' });
+      const input = h('input', { maxlength: 200, placeholder: 'Say something…', enterkeyhint: 'send' });
+      const send = text => { text = text.trim(); if (text) this.chat(text); };
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') { send(input.value); input.value = ''; } });
+      this.chatEl = h('div', { class: 'chat' },
+        h('h3', {}, 'Chat'), this.chatLog,
+        h('div', { class: 'row' }, input, h('button', { onclick: () => { send(input.value); input.value = ''; } }, 'Send')),
+        h('div', { class: 'row emotes' }, ['👍', '😂', '😮', '😡', '🎉', 'GG', 'Nice!', 'Oops'].map(e => h('button', { class: 'quiet', onclick: () => send(e) }, e))));
+    }
     this.soundBtn = h('button', { class: 'icon', title: 'Sound', onclick: () => { sound.setMuted(!sound.isMuted()); this.soundBtn.textContent = sound.isMuted() ? '🔇' : '🔊'; } }, sound.isMuted() ? '🔇' : '🔊');
     this.info = h('div', { class: 'info' });
     this.logEl = h('ol', { class: 'log' });
@@ -107,10 +121,10 @@ export class Match {
     const zoomIn = h('button', { class: 'icon', title: 'Zoom in', onclick: () => this.zoom(1) }, '+');
     const zoomOut = h('button', { class: 'icon', title: 'Zoom out', onclick: () => this.zoom(-1) }, '−');
     this.root.replaceChildren(
-      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.powerBtn, this.endBtn),
+      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
         h('div', { class: 'stage' }, this.scroller, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
-        h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, h('h3', {}, 'Log'), this.logEl)),
+        h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, this.chatEl, h('h3', {}, 'Log'), this.logEl)),
     );
     this.ctx = this.canvas.getContext('2d');
 
@@ -264,6 +278,37 @@ export class Match {
     this.showInfo();
   }
 
+  /** A chat line from someone (seat -1 for a watcher or the host's notices). */
+  showChat(name, seat, text) {
+    if (!this.chatLog) return;
+    const color = seat >= 0 ? factionColor(this.rules, seat) : '#a09fb8';
+    this.chatLog.append(h('li', { style: `--c:${color}` }, h('b', {}, name), ' ', text));
+    while (this.chatLog.children.length > 80) this.chatLog.firstChild.remove();
+    this.chatLog.scrollTop = this.chatLog.scrollHeight;
+    const bubble = h('div', { class: 'bubble', style: `--c:${color}` }, h('b', {}, name), ' ', text);
+    this.root.querySelector('.stage')?.append(bubble);
+    setTimeout(() => bubble.remove(), 4000);
+    sound.play('tick');
+  }
+
+  /** Turn clock: `left` ms for `turn`, or null for none. */
+  setTimer(turn, left) {
+    clearInterval(this.timerTick);
+    if (left == null) { this.clockEl.classList.add('hidden'); return; }
+    const end = Date.now() + left;
+    const tick = () => {
+      const ms = Math.max(0, end - Date.now());
+      const sec = Math.ceil(ms / 1000);
+      this.clockEl.textContent = `⏱ ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+      this.clockEl.classList.toggle('low', sec <= 15);
+      this.clockEl.style.setProperty('--c', factionColor(this.rules, turn));
+      if (!ms) clearInterval(this.timerTick);
+    };
+    this.clockEl.classList.remove('hidden');
+    tick();
+    this.timerTick = setInterval(tick, 500);
+  }
+
   setNet(text) {
     this.netEl.textContent = text || '';
     this.netEl.classList.toggle('hidden', !text);
@@ -293,9 +338,9 @@ export class Match {
       }
       const hash = fingerprint(res.state);
       if (meta.hash && meta.hash !== hash) { this.queue.length = 0; this.onDesync?.(); }
-      this.onApplied?.(player, action, res.state, hash);
       this.record.actions.push([player, action]);
       if (res.events.some(e => e.e === 'turn' || e.e === 'over')) this.stats.push(snapshot(this.rules, res.state, res.income));
+      this.onApplied?.(player, action, res.state, hash);
       if (meta.mine) this.pending = false;
       await this.animate(res.events, this.seats[player]?.ai || !this.seats[player]?.local);
       this.setState(this.seen(res.state), res.income);

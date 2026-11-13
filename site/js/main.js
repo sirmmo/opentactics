@@ -8,6 +8,8 @@ import * as net from './net.js';
 import { statsFor } from './stats.js';
 
 const app = $('#app');
+const HOSTED = 'ot.hosted';
+let hostTimers = [];
 
 // ---- installing as an app ------------------------------------------------
 
@@ -309,6 +311,8 @@ function watchReplay(rec) {
 }
 
 function leaveEverything() {
+  for (const t of hostTimers) clearInterval(t);
+  hostTimers = [];
   match?.destroy();
   match = null;
   editor?.destroy();
@@ -318,6 +322,24 @@ function leaveEverything() {
   guestLink?.peer.destroy();
   guestLink = null;
   document.body.dataset.screen = 'menu';
+}
+
+/** The game this browser was hosting, if the page was closed or reloaded mid-game. */
+function hostedGame() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(HOSTED) || 'null');
+    if (saved && !saved.state.over && Date.now() - saved.at < 24 * 3600e3) return saved;
+  } catch { /* nothing usable */ }
+  return null;
+}
+
+function resumeButton() {
+  const saved = hostedGame();
+  if (!saved) return '';
+  return h('div', { class: 'row resume' },
+    h('button', { class: 'primary', onclick: () => setup('host', { resume: saved }) }, `Resume hosting room ${saved.code}`),
+    h('span', { class: 'muted small' }, `${saved.state.name}, day ${saved.state.day}. Your guests reconnect on their own.`),
+    h('button', { class: 'quiet', onclick: e => { try { localStorage.removeItem(HOSTED); } catch { /* ignore */ } e.target.closest('.resume').remove(); } }, 'Forget it'));
 }
 
 function menu() {
@@ -333,6 +355,7 @@ function menu() {
       h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw, test and share maps')),
       h('button', { class: 'big', onclick: () => openFile() }, 'Load replay or save', h('small', {}, 'Watch a recorded game, or carry on a saved one')),
     ),
+    resumeButton(),
     h('div', { class: 'install-slot' }, installButton()),
     h('footer', {}, 'Art and sounds by Kenney (CC0). Online play goes browser to browser over WebRTC.'),
   ));
@@ -343,7 +366,7 @@ function menu() {
 async function setup(mode, preset = {}) {
   leaveEverything();
   document.body.dataset.screen = 'setup';
-  const cfg = { mode, rules: null, rulesName: '', map: null, seats: [], options: { fog: false, supply: false, weather: 'off', powers: false } };
+  const cfg = { mode, rules: null, rulesName: '', map: null, seats: [], options: { fog: false, supply: false, weather: 'off', powers: false }, timer: preset.resume?.timer || 0 };
   const err = h('div', { class: 'error hidden' });
   const showError = e => { err.textContent = e.message || String(e); err.classList.remove('hidden'); };
   const clearError = () => err.classList.add('hidden');
@@ -537,18 +560,27 @@ async function setup(mode, preset = {}) {
   if (mode === 'host') {
     roomEl.classList.remove('hidden');
     roomEl.replaceChildren(h('p', { class: 'muted' }, 'Opening a room…'));
-    const code = net.newCode();
-    net.host(code, { onGuest, onError: e => console.warn('peer', e) }).then(peer => {
+    const code = preset.resume?.code || net.newCode();
+    // A resumed room may still be held by the broker for a little while: retry.
+    const open = (tries = 0) => net.host(code, { onGuest, onError: e => console.warn('peer', e) }).catch(e => {
+      if (tries < 20 && preset.resume) return new Promise(r => setTimeout(r, 3000)).then(() => open(tries + 1));
+      throw e;
+    });
+    open().then(peer => {
       room = { peer, code, guests: new Map() };
+      if (match) { match.setNet(`Room ${code} is open again.`); hostNetStatus(); }
       const link = `${location.origin}${location.pathname}?join=${code}`;
+      const timerSel = h('select', { onchange: e => { cfg.timer = +e.target.value; } },
+        ...[[0, 'No time limit'], [60, '1 minute a turn'], [120, '2 minutes a turn'], [300, '5 minutes a turn']].map(([v, l]) => h('option', { value: v, selected: cfg.timer === v }, l)));
       roomEl.replaceChildren(
         h('h3', {}, 'Room'),
         h('div', { class: 'code' }, code),
         h('div', { class: 'row' }, h('input', { value: link, readonly: true, onfocus: e => e.target.select() }),
           h('button', { onclick: () => navigator.clipboard?.writeText(link) }, 'Copy link')),
-        h('p', { class: 'muted small' }, 'Friends open the link, or choose Join online and type the code. Seats set to “Online player” fill in the order people arrive.'),
+        h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Turn timer'), timerSel),
+        h('p', { class: 'muted small' }, 'Friends open the link, or choose Join online and type the code. Seats set to “Online player” fill in the order people arrive; anyone else can watch. When a turn runs out of time it ends by itself.'),
       );
-    }).catch(e => { roomEl.replaceChildren(h('p', { class: 'error' }, `Could not open a room: ${e.message}`)); });
+    }).catch(e => { (match ? match.setNet(`Could not reopen room ${code}: ${e.message}`) : roomEl.replaceChildren(h('p', { class: 'error' }, `Could not open a room: ${e.message}`))); });
   }
 
   function lobbyFor(token) {
@@ -600,8 +632,8 @@ async function setup(mode, preset = {}) {
     if (msg.t === 'hello') {
       const token = String(msg.token || '').slice(0, 64), name = String(msg.name || 'Guest').slice(0, 20);
       let seat = cfg.seats.find(s => s.token === token);
-      if (!seat && !match) seat = cfg.seats.find(s => s.kind === 'open');
-      room.guests.set(token, { conn, token, name });
+      if (!seat && !match && !msg.watch) seat = cfg.seats.find(s => s.kind === 'open');
+      room.guests.set(token, { conn, token, name, lastChat: 0 });
       if (seat) {
         seat.kind = 'peer'; seat.token = token; seat.name = name; seat.conn = conn;
         if (match) { match.seats[cfg.seats.indexOf(seat)].name = name; match.toast(`${name} is back`); }
@@ -618,7 +650,60 @@ async function setup(mode, preset = {}) {
       match.commit(seatIndex, msg.action, { onRefused: error => conn.send({ t: 'refused', error }) });
     } else if (msg.t === 'resync' && match) {
       sendSync(conn, guest.token);
+    } else if (msg.t === 'chat') {
+      const now = Date.now();
+      if (now - guest.lastChat < 700) return;
+      guest.lastChat = now;
+      broadcastChat(guest.name, cfg.seats.findIndex(s => s.token === guest.token), String(msg.text || '').slice(0, 200));
     }
+  }
+
+  function broadcastChat(name, seat, text) {
+    text = text.trim();
+    if (!text || !room) return;
+    for (const g of room.guests.values()) if (g.conn.open) g.conn.send({ t: 'chat', name, seat, text });
+    match?.showChat(name, seat, text);
+  }
+
+  // ---- turn timer (host) ----
+  let deadline = null, timedTurn = -1;
+  function armTimer(state) {
+    if (!cfg.timer || !match) return;
+    if (state.over) { deadline = null; broadcastTimer(state.turn, null); return; }
+    if (state.turn === timedTurn && deadline) return;
+    timedTurn = state.turn;
+    const human = cfg.seats[state.turn]?.kind !== 'ai';
+    deadline = human ? Date.now() + cfg.timer * 1000 : null;
+    broadcastTimer(state.turn, human ? cfg.timer * 1000 : null);
+  }
+  function broadcastTimer(turn, left) {
+    match?.setTimer(turn, left);
+    for (const g of room?.guests.values() || []) if (g.conn.open) g.conn.send({ t: 'timer', turn, left });
+  }
+  function checkTimer() {
+    if (!deadline || !match || match.busy || match.queue.length || match.view.over || Date.now() < deadline) return;
+    deadline = null;
+    const turn = engine.call({ op: 'state' }).state.turn;
+    match.showChat('Host', -1, `Time is up for ${match.playerName(turn)}.`);
+    match.commit(turn, { type: 'end_turn' });
+  }
+
+  // ---- keeping the hosted game, so a reload can pick it up ----
+  let lastSaved = 0, saveTimer = null;
+  function persist(state) {
+    const write = () => {
+      lastSaved = Date.now();
+      try {
+        if (state.over) return localStorage.removeItem(HOSTED);
+        localStorage.setItem(HOSTED, JSON.stringify({
+          code: room?.code, at: Date.now(), timer: cfg.timer, rules: cfg.rules, rulesName: cfg.rulesName,
+          seats: cfg.seats.map(st => ({ kind: st.kind === 'open' ? 'ai' : st.kind, token: st.token, name: st.name, profile: st.profile, team: st.team })),
+          state: engine.call({ op: 'state' }).state, record: match.record,
+        }));
+      } catch { /* storage full or blocked */ }
+    };
+    clearTimeout(saveTimer);
+    if (state.over || Date.now() - lastSaved > 3000) write(); else saveTimer = setTimeout(write, 3000);
   }
 
   function seatsForGuests() {
@@ -627,7 +712,9 @@ async function setup(mode, preset = {}) {
 
   function sendSync(conn, token) {
     const st = engine.call({ op: 'state' });
-    conn.send({ t: 'sync', rules: cfg.rules, state: st.state, income: st.income, seats: seatsForGuests(), you: cfg.seats.findIndex(s => s.token === token) });
+    const left = deadline ? Math.max(0, deadline - Date.now()) : null;
+    conn.send({ t: 'sync', rules: cfg.rules, state: st.state, income: st.income, seats: seatsForGuests(), you: cfg.seats.findIndex(s => s.token === token),
+      record: match?.record, timer: cfg.timer ? { turn: st.state.turn, left } : null });
   }
 
   function hostNetStatus() {
@@ -638,9 +725,9 @@ async function setup(mode, preset = {}) {
   }
 
   // ---- start ----
-  function start() {
+  function start(resume) {
     clearError();
-    if (mode === 'host' && cfg.seats.some(s => s.kind === 'open')) {
+    if (!resume && mode === 'host' && cfg.seats.some(s => s.kind === 'open')) {
       if (!confirm('Some online seats are still empty. Let the computer play them?')) return;
       for (const s of cfg.seats) if (s.kind === 'open') s.kind = 'ai';
     }
@@ -650,7 +737,9 @@ async function setup(mode, preset = {}) {
     const options = { ...cfg.options, teams };
     let res;
     try {
-      res = engine.call({ op: 'new', rules: cfg.rules, map: cfg.map, seed: Math.floor(Math.random() * 2 ** 31), setup: { options } });
+      res = resume
+        ? engine.call({ op: 'load', rules: cfg.rules, state: resume.state })
+        : engine.call({ op: 'new', rules: cfg.rules, map: cfg.map, seed: Math.floor(Math.random() * 2 ** 31), setup: { options } });
     } catch (e) { return showError(e); }
     document.body.dataset.screen = 'play';
     const seats = cfg.seats.map(s => ({ name: s.kind === 'ai' ? 'Computer' : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai', profile: s.kind === 'ai' ? s.profile : undefined }));
@@ -659,7 +748,10 @@ async function setup(mode, preset = {}) {
     const menuItems = [
       { label: 'Save game', action: () => saveGame() },
       { label: 'Resign', action: () => { if (confirm('Resign this game?')) resign(); } },
-      { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game?')) menu(); } },
+      { label: 'Leave to menu', action: () => {
+        if (!match.view.over && !confirm(mode === 'host' ? 'Leave this game? You can resume hosting it from the main menu.' : 'Leave this game?')) return;
+        menu();
+      } },
     ];
     if (mode === 'host') menuItems.splice(1, 0, { label: 'Computer takes empty seats', action: () => {
       cfg.seats.forEach((s, i) => { if (s.kind === 'peer' && !s.conn?.open) { s.kind = 'ai'; match.seats[i].ai = true; match.seats[i].name = 'Computer'; } });
@@ -670,16 +762,22 @@ async function setup(mode, preset = {}) {
     app.replaceChildren(root);
     match = new Match(root, {
       engine, rules: cfg.rules, state: res.state, income: res.income, seats, driver: true, menu: menuItems, onWatch: watchReplay,
+      chat: mode === 'host' ? text => broadcastChat(myName(), cfg.seats.findIndex(st => st.kind === 'local'), text) : undefined,
       onApplied: (player, action, state, hash) => {
-        if (!room) return;
-        for (const g of room.guests.values()) if (g.conn.open) g.conn.send({ t: 'act', player, action, h: hash });
+        if (mode !== 'host') return;
+        for (const g of room?.guests.values() || []) if (g.conn.open) g.conn.send({ t: 'act', player, action, h: hash });
+        armTimer(state);
+        persist(state);
       },
     });
     match.income = res.income;
-    if (room) {
-      for (const g of room.guests.values()) if (g.conn.open) sendSync(g.conn, g.token);
+    if (resume?.record) match.record = resume.record;
+    if (mode === 'host') {
+      for (const g of room?.guests.values() || []) if (g.conn.open) sendSync(g.conn, g.token);
       hostNetStatus();
-      setInterval(hostNetStatus, 3000);
+      hostTimers.push(setInterval(hostNetStatus, 3000), setInterval(checkTimer, 500));
+      armTimer(res.state);
+      persist(res.state);
     }
   }
 
@@ -691,6 +789,17 @@ async function setup(mode, preset = {}) {
 
   function saveGame() {
     downloadSave(cfg.rules, match.seats);
+  }
+
+  // Picking up a hosted game after a reload: same room, same seats, same game.
+  if (preset.resume) {
+    const r = preset.resume;
+    cfg.rules = r.rules;
+    cfg.rulesName = r.rulesName;
+    cfg.map = { name: r.state.name, players: r.state.players.length };
+    cfg.seats = r.seats.map(st => ({ ...st }));
+    renderOptions();
+    return start(r);
   }
 
   // Initial rules and map.
@@ -717,9 +826,11 @@ function joinScreen(code = '') {
   const status = h('div', { class: 'muted' });
   const lobby = h('div', { class: 'seats' });
   const go = h('button', { class: 'primary', onclick: () => connect() }, 'Join');
+  const watchIn = h('input', { type: 'checkbox' });
   app.replaceChildren(h('div', { class: 'join-screen' },
     h('header', { class: 'bar' }, h('button', { onclick: menu }, '← Back'), h('h2', {}, 'Join an online match')),
-    h('div', { class: 'joinbox' }, h('label', {}, 'Room code', codeIn), h('label', {}, 'Your name', nameIn), go, status, lobby)));
+    h('div', { class: 'joinbox' }, h('label', {}, 'Room code', codeIn), h('label', {}, 'Your name', nameIn),
+      h('label', { class: 'opt' }, watchIn, h('span', {}, 'Just watch', h('small', {}, 'Follow the game without taking a seat.'))), go, status, lobby)));
   codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
 
   async function connect() {
@@ -738,7 +849,7 @@ function joinScreen(code = '') {
     const { conn } = guestLink;
     history.replaceState(null, '', `?join=${c}`);
     status.textContent = 'Connected. Waiting for the host to start…';
-    conn.send({ t: 'hello', name: nameIn.value.trim() || 'Player', token: net.guestToken() });
+    conn.send({ t: 'hello', name: nameIn.value.trim() || 'Player', token: net.guestToken(), watch: watchIn.checked });
     conn.on('data', msg => onHostMessage(msg, lobby, status));
     conn.on('close', () => {
       if (match) {
@@ -750,7 +861,10 @@ function joinScreen(code = '') {
 }
 
 async function reconnect(code, tries = 0) {
-  if (!match || tries > 10) { match?.setNet('Disconnected from the host.'); return; }
+  if (!match) return;
+  // Keep trying for about ten minutes: the host may be reloading and reopening the room.
+  if (tries > 200) { match.setNet('Disconnected from the host.'); return; }
+  if (tries) match.setNet(`Lost the host. Reconnecting (attempt ${tries + 1})…`);
   try {
     guestLink?.peer.destroy();
     guestLink = await net.join(code);
@@ -758,7 +872,7 @@ async function reconnect(code, tries = 0) {
     guestLink.conn.on('close', () => { match?.setNet('Lost the host. Trying to reconnect…'); reconnect(code); });
     guestLink.conn.send({ t: 'hello', name: myName(), token: net.guestToken() });
   } catch {
-    setTimeout(() => reconnect(code, tries + 1), 2000);
+    setTimeout(() => reconnect(code, tries + 1), Math.min(5000, 1500 + tries * 500));
   }
 }
 
@@ -783,6 +897,7 @@ function onHostMessage(msg, lobbyEl, statusEl) {
     if (match) {
       match.seats = seats;
       match.resync(res.state, res.income);
+      match.setNet(msg.you >= 0 ? 'Back in the game.' : 'Watching');
     } else {
       document.body.dataset.screen = 'play';
       const root = h('div', { class: 'play-screen' });
@@ -794,13 +909,21 @@ function onHostMessage(msg, lobbyEl, statusEl) {
           { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game?')) menu(); } },
         ],
         send: (player, action) => guestLink.conn.send({ t: 'act', action }),
+        chat: text => guestLink?.conn.open && guestLink.conn.send({ t: 'chat', text }),
         onDesync: () => { match.setNet('Out of step with the host; fetching the game again…'); guestLink.conn.send({ t: 'resync' }); },
       });
       match.income = res.income;
     }
-    match.setNet(msg.you >= 0 ? `Playing online as ${msg.rules.factions[msg.you].name}` : 'Watching');
+    // The whole game so far, so stats and the replay include what happened before we joined.
+    if (msg.record?.start && Array.isArray(msg.record.actions)) match.record = msg.record;
+    match.setTimer(msg.timer?.turn ?? 0, msg.timer?.left ?? null);
+    match.setNet(msg.you >= 0 ? `Playing online as ${msg.rules.factions[msg.you].name}` : 'Watching: everything is visible to you.');
   } else if (msg.t === 'act' && match) {
     match.commit(msg.player, msg.action, { hash: msg.h, mine: match.seats[msg.player]?.local });
+  } else if (msg.t === 'chat' && match) {
+    match.showChat(String(msg.name || '?').slice(0, 20), Number.isInteger(msg.seat) ? msg.seat : -1, String(msg.text || '').slice(0, 200));
+  } else if (msg.t === 'timer' && match) {
+    match.setTimer(msg.turn, msg.left);
   } else if (msg.t === 'refused' && match) {
     match.refused(msg.error);
   }

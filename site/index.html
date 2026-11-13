@@ -176,6 +176,17 @@ button.power.ready { border-color: var(--accent); color: var(--accent); box-shad
 .objectives { background: #0003; border-radius: 6px; padding: 4px 8px 8px; margin-bottom: 6px; font-size: 13px; }
 .objectives h3 { margin-top: 4px; }
 .tips p { margin: 6px 0 0; color: #cfe8ff; font-size: 12px; border-left: 3px solid #4d7fa8; padding-left: 6px; }
+.hud .clock { font-family: kenney-mono, monospace; padding: 3px 8px; border-radius: 6px; background: #0004; border: 2px solid var(--c, transparent); }
+.hud .clock.low { color: var(--bad); animation: glow 0.6s ease-in-out infinite alternate; }
+.chat { display: flex; flex-direction: column; gap: 4px; }
+.chatlog { list-style: none; margin: 0; padding: 0; max-height: 140px; overflow: auto; font-size: 12px; }
+.chatlog li { border-left: 3px solid var(--c); padding: 1px 6px; margin-bottom: 2px; overflow-wrap: anywhere; }
+.chatlog b { color: var(--c); font-weight: normal; }
+.chat .row { margin: 0; flex-wrap: nowrap; } .chat .row input { flex: 1; }
+.chat .emotes { flex-wrap: wrap; gap: 2px; } .chat .emotes button { padding: 2px 6px; font-family: system-ui, sans-serif; font-size: 13px; }
+.bubble { position: absolute; left: 12px; bottom: 56px; z-index: 6; max-width: 70%; background: var(--panel); border: 2px solid var(--c); border-radius: 10px; padding: 6px 10px; box-shadow: 0 6px 18px #000a; animation: pop 4s ease both; pointer-events: none; overflow-wrap: anywhere; }
+.bubble b { color: var(--c); font-weight: normal; }
+@keyframes pop { 0% { opacity: 0; transform: translateY(8px); } 8%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .toast { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 6; background: #4a2228; border: 2px solid var(--bad); padding: 8px 14px; border-radius: 6px; }
 
 /* editor */
