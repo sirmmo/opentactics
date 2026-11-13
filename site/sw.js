@@ -11,6 +11,7 @@ const CACHE = `opentactics-${BUILD}`;
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'opentactics.wasm',
   'js/main.js', 'js/game.js', 'js/art.js', 'js/engine.js', 'js/editor.js', 'js/net.js', 'js/sound.js',
+  'js/ai-worker.js', 'js/stats.js',
   'vendor/peerjs.min.js', 'rules/default.json', 'rules/blitz.json', 'maps/index.json',
   'assets/tiles.png', 'assets/kenney-mini.ttf', 'assets/kenney-mini-square-mono.ttf',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png',
@@ -28,7 +29,7 @@ self.addEventListener('install', event => {
       const index = await (await fetch('maps/index.json')).json();
       await cache.addAll(index.map(m => `maps/${m.id}.json`));
       const missions = await (await fetch('missions/index.json')).json();
-      await cache.addAll(['missions/index.json', ...missions.map(m => `missions/${m.id}.json`), 'js/stats.js']);
+      await cache.addAll(['missions/index.json', ...missions.map(m => `missions/${m.id}.json`)]);
     } catch { /* they will be cached as they are used */ }
     await self.skipWaiting();
   })());

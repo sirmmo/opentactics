@@ -5,7 +5,7 @@
 // comes from this player, the computer or a peer, goes through `commit`, so
 // all of them are applied and animated in the same order.
 
-import { T, drawTile, drawUnit, factionColor, terrainLayer } from './art.js';
+import { T, drawTile, drawUnit, factionColor, terrainLayer, redrawTiles } from './art.js';
 import { fingerprint } from './engine.js';
 import * as sound from './sound.js';
 import { snapshot, statsView } from './stats.js';
@@ -14,6 +14,24 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const key = (x, y) => `${x},${y}`;
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// One background worker for the computer players, shared by every match.
+let worker = null, workerRules = null, workerId = 0;
+const waiting = new Map();
+function aiWorker() {
+  if (worker === false) return null;
+  if (!worker) {
+    try {
+      worker = new Worker(new URL('./ai-worker.js', import.meta.url), { type: 'module' });
+      worker.onmessage = e => { const w = waiting.get(e.data.id); waiting.delete(e.data.id); w?.(e.data); };
+      worker.onerror = () => { worker = false; for (const w of waiting.values()) w({ error: 'worker failed' }); waiting.clear(); };
+    } catch {
+      worker = false;
+      return null;
+    }
+  }
+  return worker;
+}
 
 /** replaceChildren that skips null and false (the DOM would print them). */
 function fill(el, ...kids) {
@@ -203,11 +221,16 @@ export class Match {
   setState(state, income) {
     this.view = state;
     if (income) this.income = income;
-    const owners = state.owner.join(',');
-    if (owners !== this.ownersDrawn) {
-      this.ownersDrawn = owners;
+    // Redraw only property that changed hands (a full redraw of a big map is slow).
+    const prev = this.ownersDrawn;
+    if (!prev || prev.length !== state.owner.length || !this.layer) {
       this.layer = terrainLayer(this.rules, state, this.layer);
+    } else {
+      const changed = [];
+      for (let i = 0; i < prev.length; i++) if (prev[i] !== state.owner[i]) changed.push(i);
+      if (changed.length) redrawTiles(this.rules, state, this.layer, changed);
     }
+    this.ownersDrawn = state.owner.slice();
     this.updateHud();
   }
 
@@ -397,6 +420,7 @@ export class Match {
       this.setState(this.seen(res.state), res.income);
     }
     this.busy = false;
+    this.instantNow = false;
     this.afterIdle();
   }
 
@@ -426,7 +450,8 @@ export class Match {
     }
     if (this.driver && this.active().some(p => this.seats[p]?.ai) && !this.busy) {
       clearTimeout(this.aiTimer);
-      this.aiTimer = setTimeout(() => this.aiStep(), 180);
+      const pause = { normal: 120, fast: 40, instant: 0 }[Match.speed] ?? 120;
+      this.aiTimer = setTimeout(() => this.aiStep(), pause);
     }
   }
 
@@ -460,19 +485,43 @@ export class Match {
     this.afterIdle();
   }
 
-  aiStep() {
-    if (!this.alive || this.busy || this.queue.length || this.view.over) return;
+  async aiStep() {
+    if (!this.alive || this.busy || this.queue.length || this.view.over || this.thinking) return;
     // The engine's truth, not the (possibly fogged) view.
     const truth = this.engine.call({ op: 'state' }).state;
     const p = this.active(truth).find(i => this.seats[i]?.ai);
     if (p == null) return;
+    const before = fingerprint(truth);
+    this.thinking = true;
     let action;
     try {
-      action = this.engine.call({ op: 'ai', player: p, profile: this.seats[p]?.profile }).action;
-    } catch (e) {
+      action = await this.think(truth, p);
+    } catch {
       action = { type: 'end_turn' };
     }
-    this.commit(p, action);
+    this.thinking = false;
+    if (!this.alive) return;
+    // Someone else moved while we were thinking (simultaneous turns): think again.
+    if (fingerprint(this.engine.call({ op: 'state' }).state) !== before) return this.afterIdle();
+    this.commit(p, action, { onRefused: () => this.afterIdle() });
+  }
+
+  /** The computer's action for `player`: in the background worker when there is one. */
+  think(state, player) {
+    const profile = this.seats[player]?.profile;
+    const w = aiWorker();
+    if (!w) return Promise.resolve(this.engine.call({ op: 'ai', player, profile }).action);
+    return new Promise((ok, fail) => {
+      const id = ++workerId;
+      waiting.set(id, r => {
+        if (r.action) return ok(r.action);
+        // The worker could not do it: think here instead.
+        try { ok(this.engine.call({ op: 'ai', player, profile }).action); } catch (e) { fail(e); }
+      });
+      const msg = { id, state, player, profile };
+      if (workerRules !== this.rules) { msg.rules = this.rules; workerRules = this.rules; }
+      w.postMessage(msg);
+    });
   }
 
   /** This player chose an action. */
@@ -519,10 +568,28 @@ export class Match {
 
   // ---- animation ---------------------------------------------------------
 
+  /** How quickly other players' moves play out: 'normal', 'fast' or 'instant'. */
+  static get speed() {
+    try { return localStorage.getItem('ot.speed') || 'normal'; } catch { return 'normal'; }
+  }
+
+  /** Is (x, y) on screen right now? Off-screen moves are not worth waiting for. */
+  onScreen(x, y) {
+    const size = T * this.scale, sc = this.scroller;
+    const px = this.canvas.offsetLeft + (x + 0.5) * size - sc.scrollLeft, py = this.canvas.offsetTop + (y + 0.5) * size - sc.scrollTop;
+    return px > -size && py > -size && px < sc.clientWidth + size && py < sc.clientHeight + size;
+  }
+
+  nap(ms) {
+    return this.instantNow ? Promise.resolve() : sleep(ms);
+  }
+
   async animate(events, fast) {
     const s = structuredClone(this.view);
     this.view = s;
-    const speed = fast ? 55 : 80;
+    const setting = Match.speed;
+    this.instantNow = fast && setting === 'instant';
+    const speed = fast ? (setting === 'fast' ? 30 : 55) : 80;
     for (const ev of events) {
       if (!this.alive) return;
       const unit = id => s.units.find(u => u.id === id);
@@ -530,8 +597,13 @@ export class Match {
         case 'move': {
           const u = unit(ev.unit);
           if (!u) break;
-          sound.play('move');
           const steps = ev.path.length - 1;
+          const [sx, sy] = ev.path[0], [ex, ey] = ev.path[steps];
+          if (this.instantNow || (!this.onScreen(sx, sy) && !this.onScreen(ex, ey))) {
+            u.x = ex; u.y = ey; u.moved = true;
+            break;
+          }
+          sound.play('move');
           const start = performance.now(), dur = steps * speed;
           await new Promise(done => {
             const step = () => {
@@ -555,15 +627,15 @@ export class Match {
           const flying = a && this.rules.units[a.kind].flying;
           if (a) {
             const dir = [Math.sign(d.x - a.x), Math.sign(d.y - a.y)];
-            if (!ranged && !calm()) await this.lunge(a, dir, fast ? 140 : 200);
+            if (!ranged && !calm() && !this.instantNow) await this.lunge(a, dir, fast ? 140 : 200);
             sound.play('attack');
             this.effect({ kind: 'flash', at: [a.x, a.y], dir, dur: 140 });
             const travel = ranged ? (fast ? 380 : 520) : (fast ? 150 : 200);
             this.effect({ kind: ranged ? 'shell' : flying ? 'missile' : 'shot', from: [a.x, a.y], to: [d.x, d.y], dur: travel, color: factionColor(this.rules, a.player) });
-            await sleep(travel);
+            await this.nap(travel);
           } else {
             sound.play('attack');
-            await sleep(fast ? 120 : 180);
+            await this.nap(fast ? 120 : 180);
           }
           this.effect({ kind: 'impact', at: [d.x, d.y], dur: 320 });
           if (ev.damage >= 45) this.shake(Math.min(1, ev.damage / 100), 260);
@@ -571,7 +643,7 @@ export class Match {
           this.effect({ kind: 'text', at: [d.x, d.y], text: `-${ev.damage}%`, color: ev.damage >= 50 ? '#ffd27a' : '#fff2a8', big: ev.damage >= 50, dur: 900 });
           d.hp = ev.hp;
           if (a) a.moved = a.moved || !ev.counter;
-          await sleep(fast ? 280 : 420);
+          await this.nap(fast ? 280 : 420);
           this.anim.blink = null;
           this.say(`${a ? this.unitName(a) : 'Something unseen'} hits ${this.unitName(d)} for ${ev.damage}%${ev.counter ? ' (counter)' : ''}`, a?.player ?? d.player);
           break;
@@ -581,7 +653,7 @@ export class Match {
           sound.play('error');
           this.effect({ kind: 'text', at: [ev.x, ev.y], text: 'Ambush!', color: '#ff9d8a', dur: 1100 });
           if (u) this.say(`${this.unitName(u)} runs into a hidden enemy`, u.player);
-          await sleep(fast ? 300 : 500);
+          await this.nap(fast ? 300 : 500);
           break;
         }
         case 'load': {
@@ -599,7 +671,7 @@ export class Match {
             this.effect({ kind: 'ring', at: [ev.unit.x, ev.unit.y], dur: 400, color: factionColor(this.rules, ev.unit.player) });
           }
           sound.play('move');
-          await sleep(fast ? 120 : 200);
+          await this.nap(fast ? 120 : 200);
           break;
         }
         case 'join': {
@@ -612,7 +684,7 @@ export class Match {
             if (ev.refund) { s.players[t.player].funds += ev.refund; this.updateHud(); }
           } else if (u) this.say(`${this.unitName(u)} joins another`, u.player);
           sound.play('capture');
-          await sleep(fast ? 150 : 250);
+          await this.nap(fast ? 150 : 250);
           break;
         }
         case 'dive': {
@@ -642,7 +714,7 @@ export class Match {
             this.effect({ kind: 'boom', at: [ev.x, ev.y], dur: 600 });
           }
           if (gone) this.say(`${this.unitName(gone)} runs out of fuel and is lost`, gone.player);
-          await sleep(fast ? 250 : 400);
+          await this.nap(fast ? 250 : 400);
           break;
         }
         case 'hill': {
@@ -660,7 +732,7 @@ export class Match {
           this.updateHud();
           this.banner('The storm closes in', `Safe circle: ${ev.radius.toFixed(1)} tiles`, '#c79bff');
           this.say('The storm closes in', s.turn);
-          await sleep(fast ? 500 : 900);
+          await this.nap(fast ? 500 : 900);
           break;
         }
         case 'storming': {
@@ -701,7 +773,7 @@ export class Match {
           s.weather = ev.weather;
           const w = this.rules.weather?.[ev.weather];
           this.updateHud();
-          if (w) { this.banner(w.name, w.description || '', '#bfe4ff'); this.say(`The weather turns: ${w.name}`, s.turn); await sleep(700); }
+          if (w) { this.banner(w.name, w.description || '', '#bfe4ff'); this.say(`The weather turns: ${w.name}`, s.turn); await this.nap(700); }
           break;
         }
         case 'power': {
@@ -712,7 +784,7 @@ export class Match {
           sound.play('win');
           this.effect({ kind: 'screen', color: factionColor(this.rules, ev.player), dur: 700 });
           if (pw) { this.banner(pw.name, `${this.playerName(ev.player)} · ${pw.description || ''}`, factionColor(this.rules, ev.player)); this.say(`${this.playerName(ev.player)} uses ${pw.name}`, ev.player); }
-          await sleep(fast ? 700 : 1100);
+          await this.nap(fast ? 700 : 1100);
           break;
         }
         case 'destroy': {
@@ -723,7 +795,7 @@ export class Match {
           const gone = unit(ev.unit);
           s.units = s.units.filter(u => u.id !== ev.unit);
           if (gone) this.say(`${this.unitName(gone)} destroyed`, gone.player);
-          await sleep(fast ? 250 : 400);
+          await this.nap(fast ? 250 : 400);
           break;
         }
         case 'capture': {
@@ -736,7 +808,7 @@ export class Match {
             this.setState(s);
             this.say(`${this.playerName(u.player)} captures a ${this.terrainAt(ev.x, ev.y).name.toLowerCase()}`, u.player);
           }
-          await sleep(fast ? 300 : 500);
+          await this.nap(fast ? 300 : 500);
           break;
         }
         case 'build': {
@@ -747,7 +819,7 @@ export class Match {
           this.updateHud();
           if (seen) this.effect({ kind: 'ring', at: [ev.unit.x, ev.unit.y], dur: 400, color: factionColor(this.rules, ev.unit.player) });
           this.say(`${this.playerName(ev.unit.player)} builds ${seen ? this.rules.units[ev.unit.kind].name : 'a unit'}`, ev.unit.player);
-          await sleep(fast ? 150 : 250);
+          await this.nap(fast ? 150 : 250);
           break;
         }
         case 'repair': {
@@ -779,7 +851,7 @@ export class Match {
         case 'defeat':
           this.say(`${this.playerName(ev.player)} is defeated`, ev.player);
           this.banner('Defeated', this.playerName(ev.player), factionColor(this.rules, ev.player));
-          await sleep(900);
+          await this.nap(900);
           break;
         case 'over':
           break;
@@ -803,6 +875,7 @@ export class Match {
   }
 
   effect(fx) {
+    if (this.instantNow) return;
     fx.t0 = performance.now();
     this.anim.effects.push(fx);
   }
@@ -1061,6 +1134,14 @@ export class Match {
 
   openMenu() {
     const items = (this.menu || []).map(m => h('button', { onclick: () => { this.menuEl.classList.add('hidden'); m.action(); } }, m.label));
+    const speeds = [['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']];
+    const speedBtn = h('button', { onclick: () => {
+      const i = speeds.findIndex(([v]) => v === Match.speed);
+      const next = speeds[(i + 1) % speeds.length][0];
+      try { localStorage.setItem('ot.speed', next); } catch { /* ignore */ }
+      speedBtn.textContent = `Other players' moves: ${speeds.find(([v]) => v === next)[1]}`;
+    } }, `Other players' moves: ${speeds.find(([v]) => v === Match.speed)?.[1] || 'Normal'}`);
+    items.push(speedBtn);
     fill(this.menuEl, ...items, h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
     this.menuEl.classList.toggle('hidden');
   }

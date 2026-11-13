@@ -502,7 +502,7 @@ fn advance(g: &Game, unit: &Unit, p: &Profile, danger: Option<&Danger>) -> (i32,
     }
     // King of the hill: half the army heads for the hill.
     if let (Mode::KingOfTheHill { .. }, Some([hx, hy])) = (&g.s.options.mode, g.s.hill) {
-        if goal.is_none() && !def.flying && unit.id % 2 == 0 {
+        if goal.is_none() && !def.flying && unit.id.is_multiple_of(2) {
             offer(&mut goal, nearest_approach(g, &plan, hx, hy), hx, hy);
         }
     }

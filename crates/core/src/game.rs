@@ -1587,11 +1587,10 @@ impl Game {
                     events.push(Event::Storm { radius });
                 }
             }
-            Mode::Survival { every, invaders, .. } => {
-                if day % every.max(1) == 0 {
+            Mode::Survival { every, invaders, .. }
+                if day.is_multiple_of(every.max(1)) => {
                     self.spawn_wave(&invaders, day / every.max(1), events);
                 }
-            }
             _ => {}
         }
     }

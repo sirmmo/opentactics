@@ -166,12 +166,28 @@ export function terrainLayer(rules, board, canvas = document.createElement('canv
   canvas.height = h * T;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) drawCell(ctx, rules, board, x, y);
+  return canvas;
+}
+
+/** Redraw just some tiles (say, property that changed hands) on an existing layer. */
+export function redrawTiles(rules, board, canvas, indices) {
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  for (const i of indices) {
+    const x = i % board.width, y = Math.floor(i / board.width);
+    ctx.clearRect(x * T, y * T, T, T);
+    drawCell(ctx, rules, board, x, y);
+  }
+}
+
+function drawCell(ctx, rules, board, x, y) {
+  const { width: w, height: h } = board;
   const view = (x, y) => rules.terrains[board.terrain[y * w + x]].view || {};
   const inside = (x, y) => x >= 0 && y >= 0 && x < w && y < h;
   const water = (x, y) => !inside(x, y) || view(x, y).base === 'water';
   const road = (x, y) => inside(x, y) && !!view(x, y).auto;
-
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+  {
     const v = view(x, y);
     const dx = x * T, dy = y * T;
     if (v.base === 'water') {
@@ -218,7 +234,6 @@ export function terrainLayer(rules, board, canvas = document.createElement('canv
       drawTile(ctx, v.building + COLS * factionRow(rules, owner), dx, dy, T, { paint: paintFor(rules, owner) });
     }
   }
-  return canvas;
 }
 
 /** A small picture of a map, for lists. */
