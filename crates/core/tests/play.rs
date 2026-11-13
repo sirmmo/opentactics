@@ -123,7 +123,7 @@ fn capture_takes_two_turns_and_hq_ends_the_game() {
     g.apply(0, &Action::EndTurn).unwrap();
     g.apply(1, &Action::EndTurn).unwrap();
     let ev = g.apply(0, &Action::Move { unit: inf, x: 5, y: 0, then: Then::Capture }).unwrap();
-    assert!(ev.contains(&Event::Over { winner: Some(0) }));
+    assert!(ev.iter().any(|e| matches!(e, Event::Over { winner: Some(0), .. })));
     assert!(g.s.over);
 }
 
@@ -150,12 +150,22 @@ fn state_round_trips_through_json() {
 /// and the same seed must give the same game.
 #[test]
 fn ai_plays_every_map_to_the_end() {
+    ai_plays_all(Options::default());
+}
+
+#[test]
+fn ai_plays_every_map_with_every_option() {
+    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![] };
+    ai_plays_all(options);
+}
+
+fn ai_plays_all(options: Options) {
     for (name, text) in bundled_maps() {
         let (name, text) = (name.as_str(), text.as_str());
         let run = |seed: u64| {
             let mut r = rules();
             r.victory.day_limit = 80;
-            let mut g = Game::new(r, &map(text), seed).unwrap();
+            let mut g = Game::with_setup(r, &map(text), seed, Setup { options: options.clone() }).unwrap();
             let mut steps = 0;
             while !g.s.over {
                 let action = ai::next_action(&g);
@@ -195,4 +205,235 @@ fn maps_need_not_be_mirrored() {
     // DUEL is lopsided on purpose: the rules are what must be equal, not the ground.
     let game = duel();
     assert_eq!(game.s.units.len(), 4);
+}
+
+// ---- switchable rules -------------------------------------------------------
+
+use opentactics_core::{Drop, Options, Setup};
+
+fn setup_game(text: &str, options: Options) -> Game {
+    let mut r = rules();
+    r.combat.luck = 0;
+    // Small test maps: pad them to the 4-row minimum with copies of the last row.
+    let mut m = map(text);
+    while m.height < 4 {
+        m.tiles.push(m.tiles.last().unwrap().clone());
+        m.height += 1;
+    }
+    Game::with_setup(r, &m, 3, Setup { options }).unwrap()
+}
+
+fn kind(g: &Game, id: &str) -> usize {
+    g.rules.unit_by_id(id).unwrap()
+}
+
+fn unit_on(g: &Game, x: i32, y: i32) -> u32 {
+    g.unit_at(x, y).unwrap_or_else(|| panic!("no unit at {x},{y}")).id
+}
+
+const TRIO: &str = r#"{
+  "name": "Trio", "width": 8, "height": 3, "players": 3,
+  "tiles": ["H......H", "........", "...H...."],
+  "owned": [{"x":0,"y":0,"player":0},{"x":7,"y":0,"player":1},{"x":3,"y":2,"player":2}],
+  "units": [
+    {"type":"tank","x":2,"y":1,"player":0},
+    {"type":"tank","x":3,"y":1,"player":1},
+    {"type":"infantry","x":6,"y":1,"player":2}
+  ]
+}"#;
+
+#[test]
+fn allies_pass_through_each_other_and_cannot_attack_each_other() {
+    let g = setup_game(TRIO, Options { teams: vec![0, 0, 1], ..Default::default() });
+    let tank = unit_on(&g, 2, 1);
+    let ally = unit_on(&g, 3, 1);
+    let reach = g.reach(g.unit(tank).unwrap());
+    assert_ne!(reach.cost(4, 1), UNREACHABLE, "an ally does not block the way");
+    assert!(!g.can_stop(g.unit(tank).unwrap(), 3, 1), "but you cannot stop on it");
+    assert!(g.targets(g.unit(tank).unwrap(), 2, 1).iter().all(|t| t.unit != ally));
+}
+
+#[test]
+fn a_team_wins_together() {
+    let mut g = setup_game(TRIO, Options { teams: vec![0, 0, 1], ..Default::default() });
+    g.apply(0, &Action::EndTurn).unwrap();
+    g.apply(1, &Action::EndTurn).unwrap();
+    let ev = g.apply(2, &Action::Resign).unwrap();
+    assert!(g.s.over);
+    assert_eq!(g.s.winners, vec![0, 1]);
+    assert!(ev.iter().any(|e| matches!(e, Event::Over { .. })));
+}
+
+const FERRY: &str = r#"{
+  "name": "Ferry", "width": 6, "height": 3, "players": 2,
+  "tiles": ["H....H", "......", "......"],
+  "owned": [{"x":0,"y":0,"player":0},{"x":5,"y":0,"player":1}],
+  "units": [
+    {"type":"infantry","x":0,"y":1,"player":0},
+    {"type":"apc","x":1,"y":1,"player":0},
+    {"type":"infantry","x":0,"y":2,"player":0,"hp":40},
+    {"type":"infantry","x":1,"y":2,"player":0,"hp":70},
+    {"type":"infantry","x":5,"y":2,"player":1}
+  ]
+}"#;
+
+#[test]
+fn transports_load_and_unload() {
+    let mut g = setup_game(FERRY, Options::default());
+    let inf = unit_on(&g, 0, 1);
+    let apc = unit_on(&g, 1, 1);
+    assert!(g.apply(0, &Action::Move { unit: inf, x: 1, y: 1, then: Then::Wait }).is_err());
+    g.apply(0, &Action::Move { unit: inf, x: 1, y: 1, then: Then::Load }).unwrap();
+    assert!(g.unit(inf).is_none());
+    assert_eq!(g.unit(apc).unwrap().cargo.len(), 1);
+    assert_eq!(g.unit_count(0), 4, "carried units still count");
+    g.apply(0, &Action::Move { unit: apc, x: 3, y: 1, then: Then::Unload(vec![Drop { unit: inf, x: 3, y: 0 }]) }).unwrap();
+    let out = g.unit(inf).unwrap();
+    assert_eq!((out.x, out.y, out.moved), (3, 0, true));
+    assert!(g.unit(apc).unwrap().cargo.is_empty());
+}
+
+#[test]
+fn damaged_units_join() {
+    let mut g = setup_game(FERRY, Options::default());
+    let a = unit_on(&g, 0, 2);
+    let b = unit_on(&g, 1, 2);
+    let funds = g.s.players[0].funds;
+    let ev = g.apply(0, &Action::Move { unit: a, x: 1, y: 2, then: Then::Join }).unwrap();
+    assert!(g.unit(a).is_none());
+    assert_eq!(g.unit(b).unwrap().hp, 100);
+    // 40 + 70 = 110: the 10 extra comes back as money.
+    assert!(ev.iter().any(|e| matches!(e, Event::Join { refund: 100, .. })));
+    assert_eq!(g.s.players[0].funds, funds + 100);
+}
+
+const DEEP: &str = r#"{
+  "name": "Deep", "width": 6, "height": 3, "players": 2,
+  "tiles": ["H~~~~H", "~~~~~~", "~~~~~~"],
+  "owned": [{"x":0,"y":0,"player":0},{"x":5,"y":0,"player":1}],
+  "units": [
+    {"type":"submarine","x":1,"y":1,"player":0},
+    {"type":"battleship","x":4,"y":1,"player":1},
+    {"type":"cruiser","x":4,"y":2,"player":1}
+  ]
+}"#;
+
+#[test]
+fn dived_submarines_hide_and_only_hunters_find_them() {
+    let mut g = setup_game(DEEP, Options::default());
+    let sub = unit_on(&g, 1, 1);
+    g.apply(0, &Action::Move { unit: sub, x: 2, y: 1, then: Then::Dive }).unwrap();
+    g.apply(0, &Action::EndTurn).unwrap();
+    let (view, _) = g.view(1);
+    assert!(view.units.iter().all(|u| u.id != sub), "a dived submarine is hidden");
+    let ship = unit_on(&g, 4, 1);
+    let cruiser = unit_on(&g, 4, 2);
+    assert!(g.targets(g.unit(ship).unwrap(), 3, 1).iter().all(|t| t.unit != sub), "a battleship cannot hit it");
+    assert!(g.targets(g.unit(cruiser).unwrap(), 2, 2).iter().any(|t| t.unit == sub), "a cruiser next to it can");
+}
+
+const MIST: &str = r#"{
+  "name": "Mist", "width": 10, "height": 3, "players": 2,
+  "tiles": ["H........H", "..........", "=====f===="],
+  "owned": [{"x":0,"y":0,"player":0},{"x":9,"y":0,"player":1}],
+  "units": [
+    {"type":"recon","x":0,"y":2,"player":0},
+    {"type":"infantry","x":5,"y":2,"player":1},
+    {"type":"infantry","x":9,"y":2,"player":1}
+  ]
+}"#;
+
+#[test]
+fn fog_hides_units_and_springs_traps() {
+    let mut g = setup_game(MIST, Options { fog: true, ..Default::default() });
+    let recon = unit_on(&g, 0, 2);
+    let hidden = unit_on(&g, 5, 2);
+    let (view, sight) = g.view(0);
+    assert!(view.units.iter().all(|u| u.id != hidden), "a unit in a forest out of reach is hidden");
+    assert!(!sight[g.at(9, 2)]);
+    // The recon drives through the forest without knowing: it is stopped next to it.
+    let ev = g.apply(0, &Action::Move { unit: recon, x: 6, y: 2, then: Then::Wait }).unwrap();
+    assert!(ev.iter().any(|e| matches!(e, Event::Trapped { x: 5, y: 2, .. })));
+    let r = g.unit(recon).unwrap();
+    assert_eq!((r.x, r.y, r.moved), (4, 2, true));
+}
+
+const SKY: &str = r#"{
+  "name": "Sky", "width": 6, "height": 3, "players": 2,
+  "tiles": ["H....H", "......", "......"],
+  "owned": [{"x":0,"y":0,"player":0},{"x":5,"y":0,"player":1}],
+  "units": [
+    {"type":"jet","x":2,"y":1,"player":0},
+    {"type":"tank","x":0,"y":2,"player":0},
+    {"type":"infantry","x":5,"y":2,"player":1}
+  ]
+}"#;
+
+#[test]
+fn supply_rules_spend_fuel_and_ammo() {
+    let mut g = setup_game(SKY, Options { supply: true, ..Default::default() });
+    let jet = unit_on(&g, 2, 1);
+    let tank = unit_on(&g, 0, 2);
+    g.apply(0, &Action::Move { unit: tank, x: 4, y: 2, then: Then::Attack(unit_on(&g, 5, 2)) }).unwrap();
+    assert_eq!(g.unit(tank).unwrap().fuel, 66);
+    assert_eq!(g.unit(tank).unwrap().ammo, 8);
+    // A jet out of fuel falls out of the sky at the start of its turn.
+    g.s.units.iter_mut().find(|u| u.id == jet).unwrap().fuel = 3;
+    g.apply(0, &Action::EndTurn).unwrap();
+    let ev = g.apply(1, &Action::EndTurn).unwrap();
+    assert!(ev.iter().any(|e| matches!(e, Event::Crash { unit, .. } if *unit == jet)));
+    assert!(g.unit(jet).is_none());
+}
+
+#[test]
+fn snow_slows_everyone() {
+    let clear = setup_game(SKY, Options::default());
+    let snow = setup_game(SKY, Options { weather: "snow".into(), ..Default::default() });
+    let k = kind(&clear, "tank");
+    assert_eq!(clear.move_cost(k, 1, 1), 1);
+    assert_eq!(snow.move_cost(k, 1, 1), 2);
+}
+
+#[test]
+fn powers_charge_with_damage_and_boost_attacks() {
+    let mut g = setup_game(SKY, Options { powers: true, ..Default::default() });
+    assert!(g.power_options(0).is_empty());
+    g.s.players[0].charge = 30000;
+    let tank = unit_on(&g, 0, 2);
+    let inf = unit_on(&g, 5, 2);
+    let plain = g.targets(g.unit(tank).unwrap(), 4, 2).into_iter().find(|t| t.unit == inf).unwrap().min;
+    g.apply(0, &Action::Power { power: "blitz".into() }).unwrap();
+    assert_eq!(g.s.players[0].charge, 0);
+    let boosted = g.targets(g.unit(tank).unwrap(), 4, 2).into_iter().find(|t| t.unit == inf).unwrap().min;
+    assert!(boosted > plain, "{boosted} > {plain}");
+    assert!(g.apply(0, &Action::Power { power: "fortify".into() }).is_err(), "one power at a time");
+    g.apply(0, &Action::Move { unit: tank, x: 4, y: 2, then: Then::Attack(inf) }).unwrap();
+    assert!(g.s.players[1].charge > 0, "taking damage charges too");
+}
+
+#[test]
+fn missions_are_won_and_lost_by_their_goals() {
+    let text = r#"{
+      "name": "Hold", "width": 6, "height": 3, "players": 2,
+      "tiles": ["H....H", "......", "...c.."],
+      "owned": [{"x":0,"y":0,"player":0},{"x":5,"y":0,"player":1}],
+      "units": [{"type":"infantry","x":3,"y":1,"player":0,"tag":"hero"},{"type":"tank","x":5,"y":2,"player":1}],
+      "mission": {"player": 0, "goals": [{"type":"capture","x":3,"y":2}], "fail": [{"type":"day","day":4}]}
+    }"#;
+    let mut g = setup_game(text, Options::default());
+    let hero = unit_on(&g, 3, 1);
+    g.apply(0, &Action::Move { unit: hero, x: 3, y: 2, then: Then::Capture }).unwrap();
+    g.apply(0, &Action::EndTurn).unwrap();
+    g.apply(1, &Action::EndTurn).unwrap();
+    g.apply(0, &Action::Move { unit: hero, x: 3, y: 2, then: Then::Capture }).unwrap();
+    assert!(g.s.over);
+    assert_eq!(g.s.winner, Some(0));
+
+    let mut lost = setup_game(text, Options::default());
+    for _ in 0..3 {
+        lost.apply(0, &Action::EndTurn).unwrap();
+        lost.apply(1, &Action::EndTurn).unwrap();
+    }
+    assert!(lost.s.over);
+    assert_eq!(lost.s.winner, Some(1));
 }

@@ -5,7 +5,7 @@
 //! page. No JavaScript glue is generated; see `site/js/engine.js`.
 
 use opentactics_core::game::UNREACHABLE;
-use opentactics_core::{ai, Action, Game, MapDef, Rules, State};
+use opentactics_core::{ai, Action, Game, MapDef, Rules, Setup, State};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::cell::RefCell;
@@ -17,8 +17,16 @@ thread_local! {
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
-    /// Start a game from a rule set and a map.
-    New { rules: Value, map: Value, seed: u64 },
+    /// Start a game from a rule set and a map, with optional rules switched on.
+    New {
+        rules: Value,
+        map: Value,
+        seed: u64,
+        #[serde(default)]
+        setup: Option<Setup>,
+    },
+    /// The game as one player's side sees it (fog of war, dived units).
+    View { player: usize },
     /// Replace the game with a state received from a server or a save.
     Load { rules: Option<Value>, state: State },
     /// Check a map against a rule set without starting anything.
@@ -47,10 +55,10 @@ fn view(g: &Game) -> Value {
 fn handle(text: &str) -> Result<Value, String> {
     let request: Request = serde_json::from_str(text).map_err(|e| format!("bad request: {e}"))?;
     match request {
-        Request::New { rules, map, seed } => {
+        Request::New { rules, map, seed, setup } => {
             let rules = Rules::from_value(rules)?;
             let map: MapDef = serde_json::from_value(map).map_err(|e| format!("map: {e}"))?;
-            let game = Game::new(rules, &map, seed)?;
+            let game = Game::with_setup(rules, &map, seed, setup.unwrap_or_default())?;
             let out = view(&game);
             GAME.with(|g| *g.borrow_mut() = Some(game));
             Ok(out)
@@ -72,6 +80,14 @@ fn handle(text: &str) -> Result<Value, String> {
             Ok(json!({}))
         }
         Request::State => with_game(|g| Ok(view(g))),
+        Request::View { player } => with_game(|g| {
+            if player >= g.s.players.len() {
+                return Err("No such player.".into());
+            }
+            let (state, sight) = g.view(player);
+            let hidden: Vec<usize> = (0..sight.len()).filter(|i| !sight[*i]).collect();
+            Ok(json!({ "state": state, "hidden": hidden }))
+        }),
         Request::Reach { unit } => with_game(|g| {
             let u = g.unit(unit).ok_or("That unit is gone.")?.clone();
             let reach = g.reach(&u);
@@ -80,7 +96,7 @@ fn handle(text: &str) -> Result<Value, String> {
             let mut threat = vec![false; g.s.terrain.len()];
             for y in 0..g.s.height {
                 for x in 0..g.s.width {
-                    let stop = reach.cost(x, y) != UNREACHABLE && g.can_stop(&u, x, y);
+                    let stop = reach.cost(x, y) != UNREACHABLE && (g.can_stop(&u, x, y) || g.can_board(&u, x, y));
                     if reach.cost(x, y) != UNREACHABLE {
                         tiles.push(json!([x, y, stop]));
                     }
@@ -110,14 +126,41 @@ fn handle(text: &str) -> Result<Value, String> {
                 return Err("That tile is off the map.".into());
             }
             let reach = g.reach(&u);
-            if reach.cost(x, y) == UNREACHABLE || !g.can_stop(&u, x, y) {
+            if reach.cost(x, y) == UNREACHABLE {
                 return Ok(json!({ "ok": false }));
             }
+            let other = g.unit_at(x, y).filter(|o| o.id != u.id);
+            let load = other.is_some_and(|o| g.can_load(&u, o));
+            let join = other.is_some_and(|o| g.can_join(&u, o));
+            let stop = g.can_stop(&u, x, y);
+            if !stop && !load && !join {
+                return Ok(json!({ "ok": false }));
+            }
+            let def = g.def(&u);
+            let mut moved = u.clone();
+            moved.x = x;
+            moved.y = y;
+            let unload: Vec<Value> = if stop {
+                u.cargo
+                    .iter()
+                    .map(|c| json!({ "unit": c.id, "kind": c.kind, "hp": c.hp, "tiles": g.drop_tiles(&moved, c, x, y) }))
+                    .filter(|v| !v["tiles"].as_array().unwrap().is_empty())
+                    .collect()
+            } else {
+                vec![]
+            };
             Ok(json!({
                 "ok": true,
                 "path": reach.path(x, y),
-                "targets": g.targets(&u, x, y),
-                "capture": g.can_capture(&u, x, y),
+                "stop": stop,
+                "targets": if stop { json!(g.targets(&u, x, y)) } else { json!([]) },
+                "capture": stop && g.can_capture(&u, x, y),
+                "load": load,
+                "join": join,
+                "unload": unload,
+                "dive": stop && def.can_dive && !u.dived,
+                "surface": stop && u.dived,
+                "supply": stop && def.supplies,
             }))
         }),
         Request::Builds { x, y } => with_game(|g| {

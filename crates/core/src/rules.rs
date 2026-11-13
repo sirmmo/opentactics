@@ -21,6 +21,63 @@ pub struct Rules {
     pub factions: Vec<Faction>,
     pub terrains: Vec<Terrain>,
     pub units: Vec<UnitDef>,
+    /// Kinds of weather; the first is clear skies. Used when a game turns weather on.
+    #[serde(default)]
+    pub weather: Vec<WeatherDef>,
+    /// Powers any player may charge up and use, when a game turns powers on.
+    /// Every player chooses from the same list.
+    #[serde(default)]
+    pub powers: Vec<PowerDef>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WeatherDef {
+    pub id: String,
+    pub name: String,
+    /// Relative chance of this weather on a new day when weather is random.
+    #[serde(default)]
+    pub chance: u32,
+    /// Extra movement cost per tile, by movement type.
+    #[serde(default)]
+    pub move_extra: BTreeMap<String, u32>,
+    /// Change to how far every unit sees (fog of war).
+    #[serde(default)]
+    pub vision: i32,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub view: Value,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PowerDef {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Charge needed. Charge is the value (in funds) of damage dealt, plus half of damage taken.
+    pub charge: u32,
+    /// What it does. Lasts until the start of the player's next turn.
+    pub effects: Vec<Effect>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Effect {
+    /// Units deal this much more damage, in percent.
+    Attack { percent: u32 },
+    /// Units take this much less damage: damage is divided by (100 + percent)%.
+    Defense { percent: u32 },
+    /// Units move this many more tiles.
+    Move { tiles: u32 },
+    /// Units see this many more tiles.
+    Vision { tiles: u32 },
+    /// Every unit heals this much health (out of 10), free.
+    Heal { hp: u32 },
+    /// Money now.
+    Funds { amount: u32 },
+    /// Every unit gets full fuel and ammunition.
+    Resupply,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -103,9 +160,15 @@ pub struct Terrain {
     /// Unit classes the owner can build here.
     #[serde(default)]
     pub builds: Vec<String>,
-    /// Unit classes the owner's units are repaired in here.
+    /// Unit classes the owner's units are repaired (and resupplied) in here.
     #[serde(default)]
     pub repairs: Vec<String>,
+    /// With fog of war, units here are only seen by enemies right next to them.
+    #[serde(default)]
+    pub hides: bool,
+    /// With fog of war, extra tiles seen by units standing here, by movement type.
+    #[serde(default)]
+    pub vision_bonus: BTreeMap<String, u32>,
     /// How the client draws it. The engine ignores this.
     #[serde(default)]
     pub view: Value,
@@ -132,6 +195,35 @@ pub struct UnitDef {
     /// Base damage in percent against each unit id. A missing id cannot be attacked.
     #[serde(default)]
     pub damage: BTreeMap<String, u32>,
+    /// How many tiles it sees with fog of war.
+    #[serde(default = "two")]
+    pub vision: u32,
+    /// Unit ids it can carry, and how many at once.
+    #[serde(default)]
+    pub carry: Vec<String>,
+    #[serde(default)]
+    pub capacity: u32,
+    /// Refills the fuel and ammunition of friendly units next to it.
+    #[serde(default)]
+    pub supplies: bool,
+    /// With supply rules: fuel (0 = unlimited, spent per movement point), fuel burnt
+    /// at the start of each turn (a unit that burns fuel daily is lost at 0), and
+    /// rounds of ammunition (0 = unlimited).
+    #[serde(default)]
+    pub fuel: u32,
+    #[serde(default)]
+    pub fuel_per_day: u32,
+    #[serde(default)]
+    pub ammo: u32,
+    /// Can dive: hidden from enemies not right next to it.
+    #[serde(default)]
+    pub can_dive: bool,
+    /// Extra fuel burnt per day while dived.
+    #[serde(default)]
+    pub dive_fuel: u32,
+    /// Can find and attack dived units.
+    #[serde(default)]
+    pub detects_dived: bool,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
@@ -144,10 +236,22 @@ fn yes() -> bool {
 fn melee() -> [u32; 2] {
     [1, 1]
 }
+fn two() -> u32 {
+    2
+}
 
 impl UnitDef {
     pub fn indirect(&self) -> bool {
         self.range[1] > 1
+    }
+
+    /// How many units it can carry.
+    pub fn slots(&self) -> usize {
+        if self.carry.is_empty() {
+            0
+        } else {
+            self.capacity.max(1) as usize
+        }
     }
 }
 
@@ -205,6 +309,15 @@ impl Rules {
             if u.moves > 40 {
                 return Err(format!("rules: unit '{}' moves too far", u.id));
             }
+            if u.vision > 20 {
+                return Err(format!("rules: unit '{}' sees too far", u.id));
+            }
+            if u.carry.iter().any(|c| !unit_ids.contains(c)) {
+                return Err(format!("rules: unit '{}' carries an unknown unit", u.id));
+            }
+            if u.capacity > 8 {
+                return Err(format!("rules: unit '{}' carries too many units", u.id));
+            }
             for target in u.damage.keys() {
                 if !unit_ids.contains(target) {
                     return Err(format!(
@@ -214,7 +327,26 @@ impl Rules {
                 }
             }
         }
+        let mut seen = BTreeSet::new();
+        for w in &self.weather {
+            if !seen.insert(&w.id) {
+                return Err(format!("rules: weather '{}' is listed twice", w.id));
+            }
+        }
+        let mut seen = BTreeSet::new();
+        for p in &self.powers {
+            if !seen.insert(&p.id) {
+                return Err(format!("rules: power '{}' is listed twice", p.id));
+            }
+            if p.charge == 0 {
+                return Err(format!("rules: power '{}' needs a charge above 0", p.id));
+            }
+        }
         Ok(())
+    }
+
+    pub fn weather_by_id(&self, id: &str) -> Option<usize> {
+        self.weather.iter().position(|w| w.id == id)
     }
 
     pub fn terrain_by_glyph(&self, glyph: char) -> Option<usize> {
@@ -250,6 +382,56 @@ pub struct MapDef {
     /// Where to fetch the rule set this map was made for. The engine ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rules: Option<String>,
+    /// Makes the map a mission: goals, a briefing, and which seat the player takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mission: Option<Mission>,
+}
+
+/// A scenario with its own way to win or lose, played from one seat.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Mission {
+    #[serde(default)]
+    pub briefing: String,
+    /// The seat the player takes; the computer plays the others.
+    #[serde(default)]
+    pub player: usize,
+    /// Meeting any of these wins the mission (besides the usual ways to win).
+    #[serde(default)]
+    pub goals: Vec<Goal>,
+    /// Meeting any of these loses it.
+    #[serde(default)]
+    pub fail: Vec<Goal>,
+    /// Teams per seat, if not everyone for themselves.
+    #[serde(default)]
+    pub teams: Vec<usize>,
+    /// Game options the mission is played with.
+    #[serde(default)]
+    pub options: Option<Value>,
+    /// For the client: tips to show, and how the computer plays. The engine ignores them.
+    #[serde(default)]
+    pub hints: Value,
+    #[serde(default)]
+    pub ai: Value,
+}
+
+/// Something that can be true about a game, from the mission player's side.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Goal {
+    /// The mission player's side owns this tile.
+    Capture { x: i32, y: i32 },
+    /// Another side owns this tile.
+    LoseTile { x: i32, y: i32 },
+    /// This day has begun.
+    Day { day: u32 },
+    /// No enemy units are left.
+    NoEnemyUnits,
+    /// The mission player's side has no units left.
+    NoUnits,
+    /// The unit with this tag is gone.
+    UnitGone { tag: String },
+    /// The unit with this tag stands on this tile.
+    UnitAt { tag: String, x: i32, y: i32 },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -266,6 +448,12 @@ pub struct MapUnit {
     pub x: usize,
     pub y: usize,
     pub player: usize,
+    /// Health out of 100, if not full.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hp: Option<u32>,
+    /// A name missions can refer to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
 }
 
 pub const MAX_MAP_SIDE: usize = 64;
