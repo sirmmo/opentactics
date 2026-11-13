@@ -4,7 +4,7 @@
 import * as sound from './sound.js';
 
 const KEY = 'ot.settings';
-const DEFAULTS = { symbols: false, textSize: 1, calm: false };
+const DEFAULTS = { symbols: false, textSize: 1, calm: false, lang: 'auto' };
 
 export function get() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
@@ -95,6 +95,7 @@ export function settingsPanel(h, onClose) {
     row("Other players' moves", 'How quickly computer and online moves play out.', choose(speed, [['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']], v => { try { localStorage.setItem('ot.speed', v); } catch { /* ignore */ } })),
     row('Sound', 'Interface and battle sounds.', h('input', { type: 'checkbox', checked: !sound.isMuted(), onchange: e => sound.setMuted(!e.target.checked) })),
     row('Music', 'A little chiptune, made in the browser.', h('input', { type: 'checkbox', checked: sound.musicEnabled(), onchange: e => sound.setMusic(e.target.checked) })),
+    row('Language', 'The language of the game.', choose(s.lang || 'auto', [['auto', 'Automatic'], ['en', 'English'], ['it', 'Italiano']], v => { set({ lang: v }); location.reload(); })),
     h('p', { class: 'muted small' }, 'Keyboard: arrow keys move the cursor, Enter or Space acts on that tile, Esc cancels, N picks the next unit, E ends the turn, + and − zoom.'),
     onClose ? h('button', { class: 'primary', onclick: onClose }, 'Done') : null);
 }

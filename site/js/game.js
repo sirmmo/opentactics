@@ -10,6 +10,7 @@ import { fingerprint } from './engine.js';
 import * as sound from './sound.js';
 import { snapshot, statsView } from './stats.js';
 import * as settings from './settings.js';
+import { tr } from './i18n.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -1004,6 +1005,7 @@ export class Match {
 
   effect(fx) {
     if (this.instantNow) return;
+    if (fx.text) fx.text = tr(fx.text);
     fx.t0 = performance.now();
     this.anim.effects.push(fx);
   }

@@ -23,8 +23,19 @@ shape; they set the ground and the starting positions, not the rules.
 - **Missions**: four tutorial missions and four challenges with their own goals.
 - **Replays and stats**: every game can be watched again, saved as a file or opened
   from a link (`?replay=URL`); the end screen charts army, property and income by day.
-- **Online extras**: watchers, chat and emotes, a turn timer, rejoining after a dropout,
-  and resuming a hosted game after the host's page reloads.
+- **Online extras**: watchers, chat and emotes (also private), a turn timer, rejoining
+  after a dropout, and resuming a hosted game after the host's page reloads.
+- **Game modes**: King of the hill, Battle royale (a closing storm), Survival (co-op
+  against waves), Score race; and **diplomacy**: alliances and truces mid-game.
+- **Terrain to fight over**: comms towers (+10% damage each), beaches, reefs.
+- **Big maps**: minimap, drag and pinch to pan and zoom, "next unit", a warning
+  before ending a turn with idle units; computer players think in a Web Worker.
+- **Atmosphere**: battle sounds and chiptune music made with Web Audio; rain, snow and
+  water animation.
+- **Accessibility**: army symbols (16 shapes), text size, reduce motion, keyboard play.
+- **Editors**: a random map generator and a mission editor in the map editor; a rules
+  editor whose rule sets can be shared as links (`#rules=…`).
+- **Languages**: English and Italian (automatic, or chosen in Settings).
 - **Map editor** with free (or optionally mirrored) painting, validation, save/download, publish, and test play.
 - **Installable app**: on phones and desktops, install it from the menu (or Share →
   Add to Home Screen on iPhone/iPad). It runs full screen and plays offline against
@@ -154,6 +165,12 @@ loses) from `capture{x,y}`, `lose_tile{x,y}`, `day{day}`, `no_enemy_units`, `no_
 `unit_gone{tag}`, `unit_at{tag,x,y}`; optional `options` (fog, supply…), `teams`,
 `hints[{day,text}]` and `ai.profile{level,style}`. Map units may carry a `tag`, `hp`,
 `fuel` and `ammo`.
+
+## Translations
+
+`site/js/i18n.js` translates the page as it appears: an exact dictionary, plus
+patterns for sentences with names and numbers (names inside them are translated
+too), dialogs and the engine's messages. To add a language, add a table like `IT`.
 
 ## Licence
 

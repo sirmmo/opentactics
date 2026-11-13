@@ -8,6 +8,9 @@ import * as net from './net.js';
 import { statsFor } from './stats.js';
 import * as settings from './settings.js';
 import { rulesEditor, customRules, rulesFromHash } from './rules-editor.js';
+import * as i18n from './i18n.js';
+
+i18n.start();
 
 const app = $('#app');
 const HOSTED = 'ot.hosted';
@@ -477,7 +480,7 @@ async function setup(mode, preset = {}) {
     try { library = await mapLibrary(); } catch (e) { showError(e); library = []; }
     mapList.replaceChildren(...library.map(entry => {
       const tag = entry.local ? ' · yours' : entry.remote ? ' · from URL' : entry.shared ? ' · shared' : '';
-      const card = h('button', { class: 'mapcard', title: entry.remote ? `${entry.description || ''}\n${entry.url}`.trim() : entry.description || '' },
+      const card = h('button', { class: 'mapcard', 'data-name': entry.name, title: entry.remote ? `${entry.description || ''}\n${entry.url}`.trim() : entry.description || '' },
         h('div', { class: 'thumb' }), h('b', {}, entry.name), h('small', {}, `${entry.width}×${entry.height} · ${entry.players} players${tag}`));
       if (entry.remote) {
         const forget = h('span', { class: 'forget', title: 'Remove from this list' }, '×');
@@ -499,7 +502,7 @@ async function setup(mode, preset = {}) {
   }
 
   function markChosen() {
-    for (const c of mapList.children) c.classList.toggle('chosen', !!cfg.map && c.querySelector('b')?.textContent === cfg.map.name);
+    for (const c of mapList.children) c.classList.toggle('chosen', !!cfg.map && c.dataset.name === cfg.map.name);
   }
 
   async function chooseMap(map, keepSeats, url) {
