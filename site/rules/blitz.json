@@ -54,6 +54,56 @@
     "color": "#f09a2e",
     "flip": true
    }
+  },
+  {
+   "name": "Purple",
+   "view": {
+    "row": 2,
+    "recolor": {
+     "from": 205,
+     "to": 275,
+     "light": 0.14
+    },
+    "color": "#9a6be0",
+    "flip": false
+   }
+  },
+  {
+   "name": "Pink",
+   "view": {
+    "row": 2,
+    "recolor": {
+     "from": 205,
+     "to": 328
+    },
+    "color": "#e65fae",
+    "flip": true
+   }
+  },
+  {
+   "name": "Teal",
+   "view": {
+    "row": 2,
+    "recolor": {
+     "from": 205,
+     "to": 172
+    },
+    "color": "#2cc4b0",
+    "flip": false
+   }
+  },
+  {
+   "name": "Yellow",
+   "view": {
+    "row": 2,
+    "recolor": {
+     "from": 205,
+     "to": 54,
+     "light": 0.06
+    },
+    "color": "#e3d23a",
+    "flip": true
+   }
   }
  ],
  "terrains": [

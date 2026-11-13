@@ -1,0 +1,53 @@
+{
+ "name": "Long Road",
+ "author": "OpenTactics",
+ "description": "Forests on either side of one long highway.",
+ "width": 32,
+ "height": 10,
+ "players": 2,
+ "tiles": [
+  "fffff....f.....ff.....f....fffff",
+  ".fff.....^^f...^^...f^^...f...f.",
+  "..ff.c.fff^c.^....^.c^ff....c...",
+  "fff....ff..fc.ffff.cf..f.c.....f",
+  "f...F.fffF=====cc....========H.f",
+  "f.H========....cc=====Ffff.F...f",
+  "f.....c.f..fc.ffff.cf..ff....fff",
+  "...c....ff^c.^....^.c^fff.c.ff..",
+  ".f...f...^^f...^^...f^^.....fff.",
+  "fffff....f.....ff.....f....fffff"
+ ],
+ "owned": [
+  {
+   "x": 28,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "x": 4,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 29,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "x": 2,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 27,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "x": 3,
+   "y": 7,
+   "player": 0
+  }
+ ],
+ "units": []
+}

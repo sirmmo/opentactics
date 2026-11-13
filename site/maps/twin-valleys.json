@@ -1,0 +1,57 @@
+{
+ "name": "Twin Valleys",
+ "author": "OpenTactics",
+ "description": "Two valleys split by a ridge, joined by a single road.",
+ "width": 20,
+ "height": 14,
+ "players": 2,
+ "tiles": [
+  "..ff^^^......^^^ff..",
+  "..f^^^^......^^^^f..",
+  "..f^^^^^....^^^^^f..",
+  "...^.........^^.....",
+  "..f^.ccf=====c..c...",
+  ".......==ccf=c......",
+  "....F===ffff.==F=H..",
+  "..H=F==.ffff===F....",
+  "......c=fcc==.......",
+  "...c..c=====fcc.^f..",
+  ".....^^.........^...",
+  "..f^^^^^....^^^^^f..",
+  "..f^^^^......^^^^f..",
+  "..ff^^^......^^^ff.."
+ ],
+ "owned": [
+  {
+   "x": 16,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "x": 4,
+   "y": 6,
+   "player": 0
+  },
+  {
+   "x": 17,
+   "y": 6,
+   "player": 1
+  },
+  {
+   "x": 2,
+   "y": 7,
+   "player": 0
+  },
+  {
+   "x": 15,
+   "y": 7,
+   "player": 1
+  },
+  {
+   "x": 3,
+   "y": 9,
+   "player": 0
+  }
+ ],
+ "units": []
+}

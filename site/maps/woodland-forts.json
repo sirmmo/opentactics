@@ -1,0 +1,80 @@
+{
+ "name": "Woodland Forts",
+ "author": "OpenTactics",
+ "description": "Three forts in a forest, no water at all.",
+ "width": 22,
+ "height": 22,
+ "players": 3,
+ "tiles": [
+  "ff^fffffffffff^^^^f^ff",
+  "ff^^^ffffffff^^^f.ff^f",
+  "^f^^^^^f...ff^^^.....f",
+  "ff.f^^...H.ffff^^.f...",
+  "ff..^f.c.=.....^fff^..",
+  "...f^^...=F..c.fffff.f",
+  "f^fff....==..c..ffff..",
+  "f^fff..c.cF^ff...ff^..",
+  ".fff...f.c=cfff...^^.^",
+  ".f^f...fff=ffffc...^^^",
+  ".^^^..ffff==fc......^^",
+  "^^^.cc.fcf=f==c=..c.^f",
+  "^^^f...^^=ffc^F===.fff",
+  "f^fff.^=Fcfff^.^F.H.ff",
+  "fffff.F=c..fff......ff",
+  "fff...=..cfffcc.ffffff",
+  "ffff.H..........ffffff",
+  "ffff.f.c.......f^^ffff",
+  "f.ffff..^^ffff^^^^ffff",
+  ".fffff^^^^ffff^.^^ffff",
+  "ffffff^^..ffff..f^^fff",
+  "ffffff^^...f^f..f^^fff"
+ ],
+ "owned": [
+  {
+   "x": 9,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 7,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 10,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 18,
+   "y": 11,
+   "player": 1
+  },
+  {
+   "x": 16,
+   "y": 13,
+   "player": 1
+  },
+  {
+   "x": 18,
+   "y": 13,
+   "player": 1
+  },
+  {
+   "x": 6,
+   "y": 14,
+   "player": 2
+  },
+  {
+   "x": 5,
+   "y": 16,
+   "player": 2
+  },
+  {
+   "x": 7,
+   "y": 17,
+   "player": 2
+  }
+ ],
+ "units": []
+}

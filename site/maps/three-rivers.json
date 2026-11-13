@@ -1,0 +1,84 @@
+{
+ "name": "Three Rivers",
+ "author": "OpenTactics",
+ "description": "Rivers run between the bases into a central lake.",
+ "width": 26,
+ "height": 26,
+ "players": 3,
+ "tiles": [
+  "^f....^fffffffff^ffffffff.",
+  "fff...^ffffffffffffffffff.",
+  "ffffffffff...f.ffffffff..~",
+  "ffffffff...H..ffff..ff..~~",
+  "ffffffff.c.=.......^^.~~~~",
+  ".fff..f....=F.c......~~~~.",
+  "..f^^.......=...c...~~~..f",
+  "~~~.....c..cA==...~~~~..ff",
+  "~~~~~.....===.===~~~~.^^ff",
+  "..~~~~~f.=c...c.=#~.....f.",
+  "f.^.~~~#=#..~.~~~=f....fff",
+  "f.^...f~=~~~~~~~#=..c..fff",
+  "f......=.~.~~~~..c....ffff",
+  "fff..c.==c.~~~~~.==.....ff",
+  "ffff...=...~~~~..=c..fc.ff",
+  "ffff.c.=.=........A.==.fff",
+  "^ffff..=A=.c~~~c==.F.H..ff",
+  "fff...Ffc.==##==.=.....fff",
+  "ffff..==....f=~=..c.f.ffff",
+  "ffff.H.f..c.f~~.c...f.ffff",
+  "fffff..c.....~~....fffffff",
+  "ffffff..f....~~...ffffffff",
+  "^fffffffff.^.~~.^..fff^^ff",
+  "^^ffffffff.^^~~.^.ffff....",
+  "f..ff^^fff...~~~.ff.f.....",
+  "...f...ffffff.~~.fffff...."
+ ],
+ "owned": [
+  {
+   "x": 11,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 9,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 22,
+   "y": 14,
+   "player": 1
+  },
+  {
+   "x": 19,
+   "y": 16,
+   "player": 1
+  },
+  {
+   "x": 21,
+   "y": 16,
+   "player": 1
+  },
+  {
+   "x": 6,
+   "y": 17,
+   "player": 2
+  },
+  {
+   "x": 5,
+   "y": 19,
+   "player": 2
+  },
+  {
+   "x": 7,
+   "y": 20,
+   "player": 2
+  }
+ ],
+ "units": []
+}

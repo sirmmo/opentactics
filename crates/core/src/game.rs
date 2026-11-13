@@ -33,7 +33,7 @@ pub struct Unit {
 impl Unit {
     /// Health as shown to players, 1-10.
     pub fn health(&self) -> u32 {
-        (self.hp + 9) / 10
+        self.hp.div_ceil(10)
     }
 }
 
@@ -432,7 +432,7 @@ impl Game {
             return 0;
         }
         let stars = if self.def(defender).flying { 0 } else { self.terrain(defender.x, defender.y).defense };
-        let health = (attacker_hp + 9) / 10;
+        let health = attacker_hp.div_ceil(10);
         let cover = (stars * self.rules.combat.defense_per_star * defender.health() / 10).min(100);
         (base + luck) * health * (100 - cover) / 1000
     }
@@ -628,7 +628,7 @@ impl Game {
         let needed = self.rules.capture.points;
         let (x, y, player, progress) = {
             let u = self.unit_mut(id);
-            u.capture += (u.hp + 9) / 10;
+            u.capture += u.hp.div_ceil(10);
             (u.x, u.y, u.player, u.capture)
         };
         let done = progress >= needed;

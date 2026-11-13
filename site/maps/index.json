@@ -18,9 +18,113 @@
  {
   "id": "four-corners",
   "name": "Four Corners",
-  "description": "Four armies on an island, with ports and airfields. Two to four players.",
+  "description": "Four armies on an island, with ports and airfields.",
   "width": 24,
   "height": 24,
   "players": 4
+ },
+ {
+  "id": "twin-valleys",
+  "name": "Twin Valleys",
+  "description": "Two valleys split by a ridge, joined by a single road.",
+  "width": 20,
+  "height": 14,
+  "players": 2
+ },
+ {
+  "id": "crossfire",
+  "name": "Crossfire",
+  "description": "A quick, cramped duel. Fight for the middle.",
+  "width": 16,
+  "height": 16,
+  "players": 2
+ },
+ {
+  "id": "long-road",
+  "name": "Long Road",
+  "description": "Forests on either side of one long highway.",
+  "width": 32,
+  "height": 10,
+  "players": 2
+ },
+ {
+  "id": "salt-flats",
+  "name": "Salt Flats",
+  "description": "Open ground and a salt lake. Little cover anywhere.",
+  "width": 24,
+  "height": 18,
+  "players": 2
+ },
+ {
+  "id": "archipelago",
+  "name": "Archipelago",
+  "description": "Two islands and a strait. Ships and aircraft decide it.",
+  "width": 26,
+  "height": 18,
+  "players": 2
+ },
+ {
+  "id": "triad",
+  "name": "Triad",
+  "description": "Three armies on one round island.",
+  "width": 24,
+  "height": 24,
+  "players": 3
+ },
+ {
+  "id": "three-rivers",
+  "name": "Three Rivers",
+  "description": "Rivers run between the bases into a central lake.",
+  "width": 26,
+  "height": 26,
+  "players": 3
+ },
+ {
+  "id": "woodland-forts",
+  "name": "Woodland Forts",
+  "description": "Three forts in a forest, no water at all.",
+  "width": 22,
+  "height": 22,
+  "players": 3
+ },
+ {
+  "id": "crossroads",
+  "name": "Crossroads",
+  "description": "Four armies, four roads, one square in the middle.",
+  "width": 22,
+  "height": 22,
+  "players": 4
+ },
+ {
+  "id": "four-lakes",
+  "name": "Four Lakes",
+  "description": "Four corners, a lake between each pair of neighbours.",
+  "width": 28,
+  "height": 20,
+  "players": 4
+ },
+ {
+  "id": "atoll",
+  "name": "Atoll",
+  "description": "A ring of land around a lagoon. Four ports, four airfields.",
+  "width": 28,
+  "height": 28,
+  "players": 4
+ },
+ {
+  "id": "hexfall",
+  "name": "Hexfall",
+  "description": "Six armies on a big island. Alliances will not last.",
+  "width": 32,
+  "height": 32,
+  "players": 6
+ },
+ {
+  "id": "grand-melee",
+  "name": "Grand Melee",
+  "description": "Eight armies around a lake. Chaos guaranteed.",
+  "width": 40,
+  "height": 40,
+  "players": 8
  }
 ]

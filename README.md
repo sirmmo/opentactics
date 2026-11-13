@@ -46,7 +46,7 @@ with three.js and the Kenney 3D kits; nothing in the engine would change.
     crates/client   WebAssembly bridge: JSON in, JSON out (ot_alloc / ot_call / ot_free)
     crates/server   static files + map library (GET/PUT /api/maps)
     site/           the game: index.html, js/, rules/, maps/, assets/, vendor/peerjs
-    tools/          make_maps.py, which generates the bundled mirrored maps
+    tools/          make_maps.py + mapgen.py, which build the bundled maps
 
 The engine is deterministic. `Game::apply(player, action)` either refuses an action
 or returns the events it caused. The dice live in the game state, so the same state
@@ -83,7 +83,7 @@ numbers: start money, no luck, a 15-day limit. Fields:
 | `capture` | `points` | a capturing unit adds its health (1-10) each turn |
 | `repair` | `hp`, `costs` | health restored per turn on own property; whether it costs money |
 | `victory` | `hq_capture`, `rout`, `day_limit` | win conditions; with a day limit, most properties wins |
-| `factions[]` | `name`, `view.row/color/flip` | one per seat; `row` picks the colour row in the tile sheet. Nothing else is allowed: no per-army bonuses |
+| `factions[]` | `name`, `view.row/color/flip`, optional `view.recolor{from,to,light}` | one per seat, up to 8; `row` picks the colour row in the tile sheet (five colours), `recolor` turns the hue `from` into hue `to` in the browser to make more. Nothing else is allowed: no per-army bonuses |
 | `terrains[]` | `id`, `glyph`, `defense`, `move_cost{type: cost}`, `capturable`, `hq`, `income`, `builds[]`, `repairs[]`, `view` | a missing movement type cannot enter |
 | `units[]` | `id`, `class`, `move_type`, `moves`, `cost`, `range[min,max]`, `can_capture`, `flying`, `damage{unit: %}`, `view.tile` | range over 1 means it cannot move and fire in one turn |
 
@@ -91,6 +91,13 @@ Damage = (base + luck roll) × attacker health/10 × (100 − stars × defense_p
 defender health/10)%.
 
 ## Maps
+
+16 maps ship in `site/maps`: seven for two players, three for three, four for four
+(including First Contact, River Line and Four Corners), Hexfall for six and Grand
+Melee for eight. `python3 tools/make_maps.py site/maps` rebuilds them: the generator
+cuts the map into one wedge per player, so everyone gets the same ground (exactly for
+2, 4 and 8 players; as near as a square grid allows for 3 and 6, where it searches for
+the most even layout). The engine tests play every map in `index.json` to the end.
 
 A map is JSON: `name`, `width`, `height`, `players`, `tiles` (rows of terrain glyphs),
 `owned` (`{x, y, player}` for starting property), `units` (`{type, x, y, player}`),

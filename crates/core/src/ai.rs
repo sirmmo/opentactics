@@ -27,7 +27,7 @@ fn unit_action(g: &Game, unit: &Unit) -> Action {
     let reach = g.reach(unit);
     let mut best: Option<(i64, i32, i32, Then)> = None;
     let mut consider = |score: i64, x: i32, y: i32, then: Then| {
-        if best.as_ref().map_or(true, |b| score > b.0) {
+        if best.as_ref().is_none_or(|b| score > b.0) {
             best = Some((score, x, y, then));
         }
     };
@@ -98,7 +98,7 @@ fn advance(g: &Game, unit: &Unit) -> (i32, i32) {
                     continue;
                 }
                 // Leave a property alone if a friend is already standing on it.
-                if g.unit_at(x, y).map_or(false, |u| u.player == unit.player && u.id != unit.id) {
+                if g.unit_at(x, y).is_some_and(|u| u.player == unit.player && u.id != unit.id) {
                     continue;
                 }
                 let bonus = if g.terrain(x, y).hq { 3 } else { 0 };
@@ -117,7 +117,7 @@ fn advance(g: &Game, unit: &Unit) -> (i32, i32) {
         // Nothing to fight: head for enemy property to get in the way.
         for y in 0..g.s.height {
             for x in 0..g.s.width {
-                if g.terrain(x, y).capturable && g.owner(x, y).map_or(false, |o| o != unit.player) {
+                if g.terrain(x, y).capturable && g.owner(x, y).is_some_and(|o| o != unit.player) {
                     offer(&mut goal, nearest_approach(g, &plan, x, y), x, y);
                 }
             }
@@ -149,7 +149,7 @@ fn advance(g: &Game, unit: &Unit) -> (i32, i32) {
     for step in route.iter().rev() {
         let (x, y) = (step[0], step[1]);
         let apart = (x - gx).abs() + (y - gy).abs();
-        let enemy_goal = g.unit_at(gx, gy).map_or(false, |u| u.player != unit.player);
+        let enemy_goal = g.unit_at(gx, gy).is_some_and(|u| u.player != unit.player);
         if enemy_goal && apart < keep_away {
             continue;
         }
@@ -166,7 +166,7 @@ fn advance(g: &Game, unit: &Unit) -> (i32, i32) {
 }
 
 fn offer(goal: &mut Option<(u32, i32, i32)>, cost: u32, x: i32, y: i32) {
-    if cost != UNREACHABLE && goal.map_or(true, |g| cost < g.0) {
+    if cost != UNREACHABLE && goal.is_none_or(|g| cost < g.0) {
         *goal = Some((cost, x, y));
     }
 }
@@ -239,7 +239,7 @@ fn build_action(g: &Game) -> Option<Action> {
                     }
                 }
                 score -= (x + y) as i64 % 3; // steady tie-break
-                if best.map_or(true, |b| score > b.0) {
+                if best.is_none_or(|b| score > b.0) {
                     best = Some((score, kind));
                 }
             }

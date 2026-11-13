@@ -4,6 +4,9 @@
 export const T = 16;
 const COLS = 18;
 let sheet, dim;
+// Recoloured copies of the sheet for armies whose `view.recolor` shifts a hue
+// (the tile set has five colours; this is how we get more), keyed "from>to".
+const tinted = new Map();
 
 export async function loadArt() {
   sheet = new Image();
@@ -18,10 +21,72 @@ export async function loadArt() {
   c.globalCompositeOperation = 'source-atop';
   c.fillStyle = 'rgba(16,16,28,0.5)';
   c.fillRect(0, 0, dim.width, dim.height);
+  tinted.clear();
 }
 
-export function drawTile(ctx, id, dx, dy, size = T, { flip = false, dark = false } = {}) {
-  const src = dark ? dim : sheet;
+function darken(canvas) {
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const c = out.getContext('2d');
+  c.drawImage(canvas, 0, 0);
+  c.globalCompositeOperation = 'source-atop';
+  c.fillStyle = 'rgba(16,16,28,0.5)';
+  c.fillRect(0, 0, out.width, out.height);
+  return out;
+}
+
+/**
+ * The sheet with every strongly coloured pixel whose hue is near `from` turned to
+ * hue `to` (degrees), keeping saturation and lightness (`light` nudges it, -1..1). Grey outlines, skin and the
+ * other team colours are left alone. Returns { normal, dim } canvases, cached.
+ */
+function recolored({ from, to, range = 40, light = 0 }) {
+  const key = `${from}>${to}>${range}>${light}`;
+  if (tinted.has(key)) return tinted.get(key);
+  const canvas = document.createElement('canvas');
+  canvas.width = sheet.width;
+  canvas.height = sheet.height;
+  const c = canvas.getContext('2d', { willReadFrequently: true });
+  c.drawImage(sheet, 0, 0);
+  const img = c.getImageData(0, 0, canvas.width, canvas.height);
+  const px = img.data;
+  for (let i = 0; i < px.length; i += 4) {
+    if (!px[i + 3]) continue;
+    const [hue, sat, lum] = toHsl(px[i], px[i + 1], px[i + 2]);
+    const off = ((hue - from + 540) % 360) - 180;
+    if (sat < 0.25 || Math.abs(off) > range) continue;
+    [px[i], px[i + 1], px[i + 2]] = toRgb((to + off + 360) % 360, sat, Math.max(0, Math.min(1, lum + light)));
+  }
+  c.putImageData(img, 0, 0);
+  const pair = { normal: canvas, dim: darken(canvas) };
+  tinted.set(key, pair);
+  return pair;
+}
+
+function toHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+
+function toRgb(h, s, l) {
+  const k = n => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [f(0), f(8), f(4)].map(v => Math.round(v * 255));
+}
+
+/** Which sheet an army's tiles come from (undefined means the plain sheet). */
+function paintFor(rules, player) {
+  const re = player >= 0 ? rules.factions[player]?.view?.recolor : null;
+  return re && typeof re.from === 'number' && typeof re.to === 'number' ? recolored(re) : undefined;
+}
+
+export function drawTile(ctx, id, dx, dy, size = T, { flip = false, dark = false, paint } = {}) {
+  const src = paint ? (dark ? paint.dim : paint.normal) : dark ? dim : sheet;
   const sx = (id % COLS) * T, sy = Math.floor(id / COLS) * T;
   if (flip) {
     ctx.save();
@@ -52,7 +117,7 @@ export function unitTile(rules, kind, player) {
 
 export function drawUnit(ctx, rules, kind, player, dx, dy, size, dark = false) {
   const flip = !!rules.factions[player]?.view?.flip;
-  drawTile(ctx, unitTile(rules, kind, player), dx, dy, size, { flip, dark });
+  drawTile(ctx, unitTile(rules, kind, player), dx, dy, size, { flip, dark, paint: paintFor(rules, player) });
 }
 
 /** Turn a map document into the board the drawing code uses. Throws on unknown glyphs. */
@@ -115,7 +180,8 @@ export function terrainLayer(rules, board, canvas = document.createElement('canv
     }
     if (v.tile != null) drawTile(ctx, v.tile, dx, dy);
     if (v.building != null) {
-      drawTile(ctx, v.building + COLS * factionRow(rules, board.owner[y * w + x]), dx, dy);
+      const owner = board.owner[y * w + x];
+      drawTile(ctx, v.building + COLS * factionRow(rules, owner), dx, dy, T, { paint: paintFor(rules, owner) });
     }
   }
   return canvas;

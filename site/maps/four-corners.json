@@ -1,7 +1,7 @@
 {
  "name": "Four Corners",
  "author": "OpenTactics",
- "description": "Four armies on an island, with ports and airfields. Two to four players.",
+ "description": "Four armies on an island, with ports and airfields.",
  "width": 24,
  "height": 24,
  "players": 4,

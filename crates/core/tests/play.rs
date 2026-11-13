@@ -27,14 +27,30 @@ fn duel() -> Game {
     Game::new(r, &map(DUEL), 7).unwrap()
 }
 
+/// Every map listed in site/maps/index.json, as (id, JSON text).
+fn bundled_maps() -> Vec<(String, String)> {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/maps");
+    let index: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/index.json")).unwrap()).unwrap();
+    index
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            let id = m["id"].as_str().unwrap().to_string();
+            let text = std::fs::read_to_string(format!("{dir}/{id}.json")).unwrap();
+            (id, text)
+        })
+        .collect()
+}
+
 #[test]
 fn bundled_maps_load() {
-    for text in [
-        include_str!("../../../site/maps/first-contact.json"),
-        include_str!("../../../site/maps/river-line.json"),
-        include_str!("../../../site/maps/four-corners.json"),
-    ] {
-        Game::new(rules(), &map(text), 1).unwrap();
+    let maps = bundled_maps();
+    assert!(maps.len() >= 15, "only {} maps in the index", maps.len());
+    for (name, text) in maps {
+        let m = map(&text);
+        let g = Game::new(rules(), &m, 1).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(g.s.players.len(), m.players);
     }
 }
 
@@ -134,11 +150,8 @@ fn state_round_trips_through_json() {
 /// and the same seed must give the same game.
 #[test]
 fn ai_plays_every_map_to_the_end() {
-    for (name, text) in [
-        ("first-contact", include_str!("../../../site/maps/first-contact.json")),
-        ("river-line", include_str!("../../../site/maps/river-line.json")),
-        ("four-corners", include_str!("../../../site/maps/four-corners.json")),
-    ] {
+    for (name, text) in bundled_maps() {
+        let (name, text) = (name.as_str(), text.as_str());
         let run = |seed: u64| {
             let mut r = rules();
             r.victory.day_limit = 80;

@@ -1,0 +1,93 @@
+{
+ "name": "Four Lakes",
+ "author": "OpenTactics",
+ "description": "Four corners, a lake between each pair of neighbours.",
+ "width": 28,
+ "height": 20,
+ "players": 4,
+ "tiles": [
+  "..^^..fffffff~~fffffff..^^..",
+  "^^^........f.~~.f........^^^",
+  "^^.^.....c.f^~~^f.c.....^.^^",
+  "...f.H=F...f.~~.f...F=H.f...",
+  "f..f..==.f.c.~~.c.f.==..f..f",
+  "f..f.c.==.ff.~~.ff.==.c.f..f",
+  "ffff....c==c====c==c....ffff",
+  "ffffff....==ffff==....ffffff",
+  "fffff.c.fc=AffffA=cf.c.fffff",
+  "~~~~~~~~.=ffffffff=.~~~~~~~~",
+  "~~~~~~~~.=ffffffff=.~~~~~~~~",
+  "fffff.c.fc=AffffA=cf.c.fffff",
+  "ffffff....==ffff==....ffffff",
+  "ffff....c==c====c==c....ffff",
+  "f..f.c.==.ff.~~.ff.==.c.f..f",
+  "f..f..==.f.c.~~.c.f.==..f..f",
+  "...f.H=F...f.~~.f...F=H.f...",
+  "^^.^.....c.f^~~^f.c.....^.^^",
+  "^^^........f.~~.f........^^^",
+  "..^^..fffffff~~fffffff..^^.."
+ ],
+ "owned": [
+  {
+   "x": 5,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 7,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 20,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 22,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 5,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 22,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "x": 5,
+   "y": 14,
+   "player": 3
+  },
+  {
+   "x": 22,
+   "y": 14,
+   "player": 2
+  },
+  {
+   "x": 5,
+   "y": 16,
+   "player": 3
+  },
+  {
+   "x": 7,
+   "y": 16,
+   "player": 3
+  },
+  {
+   "x": 20,
+   "y": 16,
+   "player": 2
+  },
+  {
+   "x": 22,
+   "y": 16,
+   "player": 2
+  }
+ ],
+ "units": []
+}

@@ -10,7 +10,11 @@
     { "name": "Red",    "view": { "row": 3, "color": "#e8594f", "flip": false } },
     { "name": "Blue",   "view": { "row": 2, "color": "#2f9be0", "flip": true } },
     { "name": "Green",  "view": { "row": 1, "color": "#5fae4e", "flip": false } },
-    { "name": "Orange", "view": { "row": 4, "color": "#f09a2e", "flip": true } }
+    { "name": "Orange", "view": { "row": 4, "color": "#f09a2e", "flip": true } },
+    { "name": "Purple", "view": { "row": 2, "recolor": {"from": 205, "to": 275, "light": 0.14}, "color": "#9a6be0", "flip": false } },
+    { "name": "Pink", "view": { "row": 2, "recolor": {"from": 205, "to": 328}, "color": "#e65fae", "flip": true } },
+    { "name": "Teal", "view": { "row": 2, "recolor": {"from": 205, "to": 172}, "color": "#2cc4b0", "flip": false } },
+    { "name": "Yellow", "view": { "row": 2, "recolor": {"from": 205, "to": 54, "light": 0.06}, "color": "#e3d23a", "flip": true } }
   ],
   "terrains": [
     { "id": "plain", "name": "Plain", "glyph": ".", "defense": 1,
