@@ -3,7 +3,8 @@
 // Maps only set the ground and the starting positions: every player always plays
 // by the same rules, so there is nothing per-player to configure here.
 
-import { T, drawTile, drawUnit, terrainLayer, mapToBoard, factionColor } from './art.js';
+import { T, drawTile, drawUnit, terrainLayer, mapToBoard, factionColor, preview } from './art.js';
+import { generatePlayable } from './mapgen.js';
 import { h } from './game.js';
 
 const STORE = 'ot.maps';
@@ -81,6 +82,7 @@ export class Editor {
       h('h2', {}, 'Map editor'),
       h('div', { class: 'spacer' }),
       h('button', { onclick: () => this.newMap() }, 'New'),
+      h('button', { onclick: () => this.openGenerator(), title: 'Make a random fair map' }, 'Generate'),
       h('button', { onclick: () => this.openDialog() }, 'Open'),
       h('button', { onclick: () => this.undoStep(), title: 'Undo (Ctrl+Z)' }, 'Undo'),
       h('button', { onclick: () => this.save() }, 'Save'),
@@ -98,6 +100,7 @@ export class Editor {
         h('h3', {}, 'Terrain'), this.terrainPal,
         h('h3', {}, 'Owner of buildings'), this.ownerSel,
         h('h3', {}, 'Units'), this.unitPal,
+        h('h3', {}, 'Mission'), this.missionEl = h('div', { class: 'mission-box' }),
         h('p', { class: 'muted small' }, 'Left button paints, right button erases units. Pick a unit, then click. Maps can be any shape; the mirror options are only a drawing aid.'))));
 
     let painting = false;
@@ -162,6 +165,11 @@ export class Editor {
       class: `pal erase${this.tool.kind === 'erase' ? ' on' : ''}`, title: 'Remove units',
       onclick: () => { this.tool = { kind: 'erase' }; this.renderPalettes(); },
     }, '✕'));
+    unitButtons.push(h('button', {
+      class: `pal tagtool${this.tool.kind === 'tag' ? ' on' : ''}`, title: 'Name a unit (missions can refer to it by name)',
+      onclick: () => { this.tool = { kind: 'tag' }; this.renderPalettes(); },
+    }, 'Aa'));
+    this.renderMission();
     this.unitPal.replaceChildren(...unitButtons);
   }
 
@@ -189,6 +197,21 @@ export class Editor {
   apply(x, y, erase) {
     const r = this.rules, m = this.map;
     const tool = erase ? { kind: 'erase' } : this.tool;
+    if (tool.kind === 'pick') {
+      this.tool = this.pickReturn || { kind: 'erase' };
+      this.pickDone?.(x, y);
+      return;
+    }
+    if (tool.kind === 'tag') {
+      const u = m.units.find(u => u.x === x && u.y === y);
+      if (!u) return this.flash('Click a unit to name it.');
+      const tag = prompt('Name for this unit (missions refer to it by name; empty removes it):', u.tag || '');
+      if (tag == null) return;
+      if (tag.trim()) u.tag = tag.trim().slice(0, 30); else delete u.tag;
+      this.draw();
+      this.renderMission();
+      return;
+    }
     for (const [mx, my, p] of this.mirrors(x, y, tool.kind === 'unit' ? tool.player : this.owner)) {
       if (tool.kind === 'terrain') {
         const t = r.terrains[tool.terrain];
@@ -315,9 +338,156 @@ export class Editor {
     if (this.mirror === 'flipy' || this.mirror === 'quad') { ctx.moveTo(0, m.height * size / 2); ctx.lineTo(m.width * size, m.height * size / 2); }
     ctx.stroke();
     ctx.setLineDash([]);
-    if (this.hover) {
-      for (const [x, y] of this.mirrors(this.hover[0], this.hover[1], 0)) drawTile(ctx, 61, x * size, y * size, size);
+    // Named units and mission targets.
+    ctx.font = `${Math.max(9, 4 * this.scale)}px kenney, monospace`;
+    ctx.textAlign = 'center';
+    for (const u of m.units) {
+      if (!u.tag) continue;
+      ctx.fillStyle = '#000c';
+      const tw = ctx.measureText(u.tag).width + 6;
+      ctx.fillRect((u.x + 0.5) * size - tw / 2, u.y * size - 2, tw, 5 * this.scale);
+      ctx.fillStyle = '#ffe08a';
+      ctx.fillText(u.tag, (u.x + 0.5) * size, u.y * size + 3.5 * this.scale);
     }
+    const mis = m.mission;
+    for (const g of [...(mis?.goals || []), ...(mis?.fail || [])]) {
+      if (g.x == null) continue;
+      ctx.strokeStyle = (mis.fail || []).includes(g) ? '#ff7a6b' : '#f3c046';
+      ctx.lineWidth = Math.max(2, this.scale);
+      ctx.setLineDash([size / 6, size / 8]);
+      ctx.strokeRect(g.x * size + 2, g.y * size + 2, size - 4, size - 4);
+      ctx.setLineDash([]);
+    }
+    if (this.hover) {
+      const marks = this.tool.kind === 'pick' || this.tool.kind === 'tag' ? [this.hover] : this.mirrors(this.hover[0], this.hover[1], 0);
+      for (const [x, y] of marks) drawTile(ctx, 61, x * size, y * size, size);
+    }
+  }
+
+  // ---- random maps -----------------------------------------------------------
+
+  openGenerator() {
+    const r = this.rules;
+    const o = this.genOptions ||= { players: 2, width: 24, height: 18, water: 'none', mountains: 40, forests: 50, cities: 2,
+      factories: true, airports: false, ports: false, towers: false, beaches: false, reefs: false, ring: true, seed: 1 };
+    const box = h('div', { class: 'popup menu generator' });
+    const view = h('div', { class: 'gen-preview' });
+    const note = h('div', { class: 'muted small' });
+    let result = null;
+    const make = () => {
+      const waters = { none: [], island: ['island'], lake: ['lake'], rivers: ['rivers'], 'island+lake': ['island', 'lake'], 'island+rivers': ['island', 'rivers'], 'rivers+lake': ['rivers', 'lake'] };
+      const opts = { ...o, water: waters[o.water], mountains: o.mountains / 100, forests: o.forests / 100, name: `Generated ${o.players}p #${o.seed}` };
+      const got = generatePlayable(opts, r);
+      result = got?.map || null;
+      view.replaceChildren(result ? preview(r, result, 320) : h('p', { class: 'error' }, 'No playable map with these settings: try another seed or less water.'));
+      note.textContent = result ? `Seed ${got.seed}. ${[2, 4, 8].includes(o.players) && (o.players !== 4 || true) ? 'Mirrored exactly for every player.' : 'As even as a square grid allows.'}` : '';
+    };
+    const num = (k, min, max) => h('input', { type: 'number', min, max, value: o[k], onchange: e => { o[k] = Math.max(min, Math.min(max, +e.target.value || min)); e.target.value = o[k]; make(); } });
+    const range = k => h('input', { type: 'range', min: 0, max: 100, value: o[k], onchange: e => { o[k] = +e.target.value; make(); } });
+    const check = (k, label) => h('label', { class: 'gen-check' }, h('input', { type: 'checkbox', checked: o[k], onchange: e => { o[k] = e.target.checked; make(); } }), label);
+    const seedIn = num('seed', 1, 999999);
+    box.append(
+      h('div', { class: 'title' }, 'Generate a map'),
+      h('div', { class: 'gen-grid' },
+        h('label', {}, 'Players', h('select', { onchange: e => { o.players = +e.target.value; make(); } },
+          ...Array.from({ length: r.factions.length - 1 }, (_, i) => i + 2).map(n => h('option', { value: n, selected: n === o.players }, n)))),
+        h('label', {}, 'Width', num('width', 10, 64)), h('label', {}, 'Height', num('height', 10, 64)),
+        h('label', {}, 'Water', h('select', { onchange: e => { o.water = e.target.value; make(); } },
+          ...['none', 'island', 'lake', 'rivers', 'island+lake', 'island+rivers', 'rivers+lake'].map(v => h('option', { value: v, selected: v === o.water }, v)))),
+        h('label', {}, 'Mountains', range('mountains')), h('label', {}, 'Forests', range('forests')),
+        h('label', {}, 'Cities each', num('cities', 1, 4)),
+        h('label', {}, 'Seed', h('span', { class: 'row' }, seedIn, h('button', { title: 'Another one', onclick: () => { o.seed = 1 + Math.floor(Math.random() * 99999); seedIn.value = o.seed; make(); } }, 'New seed')))),
+      h('div', { class: 'row' }, check('ring', 'Ring road'), check('factories', 'Extra factories'), check('airports', 'Airports'), check('ports', 'Ports'),
+        check('towers', 'Comms towers'), check('beaches', 'Beaches'), check('reefs', 'Reefs')),
+      view, note,
+      h('div', { class: 'row' },
+        h('button', { class: 'primary', onclick: () => { if (!result) return; this.load(result); box.remove(); } }, 'Use this map'),
+        h('button', { class: 'quiet', onclick: () => box.remove() }, 'Cancel')));
+    this.root.querySelector('.stage').append(box);
+    make();
+  }
+
+  // ---- missions ----------------------------------------------------------------
+
+  renderMission() {
+    const m = this.map, el = this.missionEl;
+    if (!el) return;
+    if (!m.mission) {
+      el.replaceChildren(h('p', { class: 'muted small' }, 'Turn this map into a mission: a briefing, goals, and the computer playing the other seats.'),
+        h('button', { onclick: () => { this.pushUndo(); m.mission = { briefing: '', player: 0, goals: [{ type: 'no_enemy_units' }], fail: [], hints: [], ai: { profile: { level: 'normal', style: 'balanced' } } }; this.renderMission(); this.openMission(); } }, 'Make it a mission'));
+      return;
+    }
+    el.replaceChildren(
+      h('p', { class: 'small' }, `${m.mission.goals.length} goal${m.mission.goals.length === 1 ? '' : 's'}, ${m.mission.fail.length} way${m.mission.fail.length === 1 ? '' : 's'} to fail. You play ${this.rules.factions[m.mission.player]?.name}.`),
+      h('div', { class: 'row' }, h('button', { onclick: () => this.openMission() }, 'Edit mission…'),
+        h('button', { class: 'quiet', onclick: () => { if (confirm('Remove the mission from this map?')) { this.pushUndo(); delete m.mission; this.layer = null; this.renderMission(); this.draw(); } } }, 'Remove')));
+  }
+
+  openMission() {
+    const r = this.rules, m = this.map, mis = m.mission;
+    mis.hints ||= []; mis.goals ||= []; mis.fail ||= [];
+    mis.ai ||= { profile: { level: 'normal', style: 'balanced' } };
+    const box = h('div', { class: 'popup menu mission-editor' });
+    const changed = () => { this.layer = null; this.draw(); this.renderMission(); };
+    const TYPES = [['capture', 'Own the tile'], ['lose_tile', 'Enemy owns the tile'], ['day', 'Day reached'], ['no_enemy_units', 'No enemy units left'],
+      ['no_units', 'No units of ours left'], ['unit_gone', 'Named unit is gone'], ['unit_at', 'Named unit is on the tile']];
+    const tags = m.units.filter(u => u.tag).map(u => u.tag);
+    const goalRow = (list, g) => {
+      const fields = h('span', { class: 'row' });
+      const renderFields = () => {
+        const parts = [];
+        if (['capture', 'lose_tile', 'unit_at'].includes(g.type)) {
+          g.x ??= 0; g.y ??= 0;
+          parts.push(h('span', { class: 'small' }, `at ${g.x},${g.y}`), h('button', { onclick: () => {
+            box.classList.add('hidden');
+            this.pickReturn = this.tool;
+            this.tool = { kind: 'pick' };
+            this.flash('Click the tile for this goal.');
+            this.pickDone = (x, y) => { g.x = x; g.y = y; box.classList.remove('hidden'); renderFields(); changed(); };
+          } }, 'Pick on map'));
+        } else { delete g.x; delete g.y; }
+        if (g.type === 'day') { g.day ??= 10; parts.push(h('input', { type: 'number', min: 1, max: 99, value: g.day, class: 'tiny', onchange: e => { g.day = Math.max(1, +e.target.value); changed(); } })); } else delete g.day;
+        if (['unit_gone', 'unit_at'].includes(g.type)) {
+          g.tag ??= tags[0] || '';
+          parts.push(tags.length ? h('select', { onchange: e => { g.tag = e.target.value; changed(); } }, ...tags.map(t => h('option', { value: t, selected: t === g.tag }, t)))
+            : h('span', { class: 'small bad' }, 'Name a unit first (the Aa tool)'));
+        } else delete g.tag;
+        fields.replaceChildren(...parts);
+      };
+      renderFields();
+      return h('div', { class: 'goal-row' },
+        h('select', { onchange: e => { g.type = e.target.value; renderFields(); changed(); } }, ...TYPES.map(([v, l]) => h('option', { value: v, selected: v === g.type }, l))),
+        fields,
+        h('button', { class: 'quiet', title: 'Remove', onclick: () => { list.splice(list.indexOf(g), 1); rows(); changed(); } }, '✕'));
+    };
+    const goalsEl = h('div'), failEl = h('div'), hintsEl = h('div');
+    const rows = () => {
+      goalsEl.replaceChildren(...mis.goals.map(g => goalRow(mis.goals, g)), h('button', { onclick: () => { mis.goals.push({ type: 'no_enemy_units' }); rows(); changed(); } }, '+ Goal'));
+      failEl.replaceChildren(...mis.fail.map(g => goalRow(mis.fail, g)), h('button', { onclick: () => { mis.fail.push({ type: 'day', day: 15 }); rows(); changed(); } }, '+ Way to fail'));
+      hintsEl.replaceChildren(...mis.hints.map(t => h('div', { class: 'goal-row' },
+        h('span', { class: 'small' }, 'Day'), h('input', { type: 'number', min: 1, max: 99, value: t.day ?? 1, class: 'tiny', onchange: e => { t.day = Math.max(1, +e.target.value); } }),
+        h('input', { value: t.text || '', placeholder: 'Tip shown from that day', maxlength: 200, oninput: e => { t.text = e.target.value; } }),
+        h('button', { class: 'quiet', onclick: () => { mis.hints.splice(mis.hints.indexOf(t), 1); rows(); } }, '✕'))),
+        h('button', { onclick: () => { mis.hints.push({ day: 1, text: '' }); rows(); } }, '+ Tip'));
+    };
+    rows();
+    const opts = mis.options || {};
+    const optBox = (k, label) => h('label', { class: 'gen-check' }, h('input', { type: 'checkbox', checked: !!opts[k], onchange: e => { opts[k] = e.target.checked; mis.options = opts; } }), label);
+    const prof = mis.ai.profile ||= { level: 'normal', style: 'balanced' };
+    box.append(
+      h('div', { class: 'title' }, 'Mission'),
+      h('label', {}, 'Briefing', h('textarea', { rows: 3, maxlength: 600, oninput: e => { mis.briefing = e.target.value; } }, mis.briefing || '')),
+      h('div', { class: 'row' },
+        h('label', {}, 'The player is ', h('select', { onchange: e => { mis.player = +e.target.value; changed(); } },
+          ...Array.from({ length: m.players }, (_, i) => h('option', { value: i, selected: i === mis.player }, r.factions[i].name)))),
+        h('label', {}, ' Computer ', h('select', { onchange: e => { prof.level = e.target.value; } }, ...['easy', 'normal', 'hard'].map(v => h('option', { value: v, selected: v === prof.level }, v))),
+          h('select', { onchange: e => { prof.style = e.target.value; } }, ...['balanced', 'rusher', 'turtle', 'economist'].map(v => h('option', { value: v, selected: v === prof.style }, v))))),
+      h('div', { class: 'row' }, optBox('fog', 'Fog of war'), optBox('supply', 'Fuel and ammo'), optBox('powers', 'Powers')),
+      h('h3', {}, 'Win when any of these is true'), goalsEl,
+      h('h3', {}, 'Lose when any of these is true'), failEl,
+      h('h3', {}, 'Tips'), hintsEl,
+      h('div', { class: 'row' }, h('button', { class: 'primary', onclick: () => { box.remove(); changed(); } }, 'Done')));
+    this.root.querySelector('.stage').append(box);
   }
 
   // ---- files -------------------------------------------------------------

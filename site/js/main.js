@@ -7,6 +7,7 @@ import { Editor } from './editor.js';
 import * as net from './net.js';
 import { statsFor } from './stats.js';
 import * as settings from './settings.js';
+import { rulesEditor, customRules, rulesFromHash } from './rules-editor.js';
 
 const app = $('#app');
 const HOSTED = 'ot.hosted';
@@ -343,6 +344,16 @@ function resumeButton() {
     h('button', { class: 'quiet', onclick: e => { try { localStorage.removeItem(HOSTED); } catch { /* ignore */ } e.target.closest('.resume').remove(); } }, 'Forget it'));
 }
 
+async function openRulesEditor() {
+  leaveEverything();
+  document.body.dataset.screen = 'setup';
+  const start = await fetchJson(BUNDLED_RULES[0].url);
+  rulesEditor(app, {
+    h, engine, start, bundled: BUNDLED_RULES, onBack: menu,
+    onPlay: doc => setup('local', { rules: { doc, name: doc.name, shared: true } }),
+  });
+}
+
 function showSettings() {
   const box = h('div', { class: 'popup menu settings-box' });
   box.append(settings.settingsPanel(h, () => box.remove()));
@@ -359,7 +370,8 @@ function menu() {
       h('button', { class: 'big', onclick: () => missionsScreen() }, 'Missions', h('small', {}, 'Tutorial and challenges, one step at a time')),
       h('button', { class: 'big', onclick: () => setup('host') }, 'Host online', h('small', {}, 'Open a room and share its code')),
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
-      h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw, test and share maps')),
+      h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw or generate maps, and make missions')),
+      h('button', { class: 'big', onclick: () => openRulesEditor() }, 'Rules editor', h('small', {}, 'Change units, damage and money, and share your rules')),
       h('button', { class: 'big', onclick: () => openFile() }, 'Load replay or save', h('small', {}, 'Watch a recorded game, or carry on a saved one')),
       h('button', { class: 'big', onclick: () => showSettings() }, 'Settings', h('small', {}, 'Army symbols, text size, motion, sound and music')),
     ),
@@ -380,7 +392,10 @@ async function setup(mode, preset = {}) {
   const clearError = () => err.classList.add('hidden');
 
   const mapList = h('div', { class: 'maplist' }, h('p', { class: 'muted' }, 'Loading maps…'));
-  const rulesSel = h('select', {}, ...BUNDLED_RULES.map(r => h('option', { value: r.url }, r.name)), h('option', { value: '?url' }, 'From a URL…'), h('option', { value: '?file' }, 'From a file…'));
+  const rulesSel = h('select', {}, ...BUNDLED_RULES.map(r => h('option', { value: r.url }, r.name)),
+    ...Object.entries(customRules()).map(([id, d]) => h('option', { value: `custom:${id}` }, `Custom: ${d.name || id}`)),
+    ...(preset.rules?.shared ? [h('option', { value: '?shared', selected: true }, `Shared: ${preset.rules.doc.name}`)] : []),
+    h('option', { value: '?url' }, 'From a URL…'), h('option', { value: '?file' }, 'From a file…'));
   const rulesInfo = h('div', { class: 'muted small' });
   const seatsEl = h('div', { class: 'seats' });
   const roomEl = h('div', { class: 'room hidden' });
@@ -425,6 +440,11 @@ async function setup(mode, preset = {}) {
         await setRules(await fetchJson(url), url);
       } else if (rulesSel.value === '?file') {
         await setRules(await readFile('.json,application/json'));
+      } else if (rulesSel.value === '?shared') {
+        await setRules(preset.rules.doc, preset.rules.name);
+      } else if (rulesSel.value.startsWith('custom:')) {
+        const doc = customRules()[rulesSel.value.slice(7)];
+        await setRules(doc, doc.name);
       } else {
         await setRules(await fetchJson(rulesSel.value));
       }
@@ -991,7 +1011,8 @@ async function openEditor(map) {
   editor = new Editor(root, {
     engine, rules, map,
     onBack: menu,
-    onPlay: m => setup('local', { map: m }),
+    // A mission is tried out as a mission; any other map goes to the setup screen.
+    onPlay: m => (m.mission ? playMission('editor', m, rules, []) : setup('local', { map: m })),
   });
 }
 
@@ -1009,6 +1030,18 @@ async function boot() {
   window.__ot = { engine, openDocument }; // handy in the console
   const q = new URLSearchParams(location.search);
   if (q.get('join')) return joinScreen(net.cleanCode(q.get('join')));
+  // A rule set shared as a link (#rules=…): open the setup screen with it.
+  const openShared = async () => {
+    try {
+      const shared = await rulesFromHash();
+      if (!shared) return false;
+      engine.call({ op: 'check', rules: shared, map: await fetchJson('maps/first-contact.json') });
+      setup('local', { rules: { doc: shared, name: shared.name, shared: true } });
+      return true;
+    } catch (e) { alert(`Could not use the shared rules: ${e.message}`); return false; }
+  };
+  window.addEventListener('hashchange', openShared);
+  if (await openShared()) return;
   if (q.get('map') || q.get('rules')) {
     let rules;
     if (q.get('rules')) {
