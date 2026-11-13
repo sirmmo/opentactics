@@ -5,6 +5,7 @@ import { loadArt, preview, factionColor } from './art.js';
 import { Match, h, $ } from './game.js';
 import { Editor } from './editor.js';
 import * as net from './net.js';
+import { statsFor } from './stats.js';
 
 const app = $('#app');
 
@@ -116,6 +117,89 @@ function readFile(accept) {
 
 // ---- screens -------------------------------------------------------------
 
+/** A replay or a saved game, from a file the player picks. */
+async function openFile() {
+  let doc;
+  try { doc = await readFile('.json,application/json'); } catch (e) { return void (e.message !== 'No file chosen.' && alert(e.message)); }
+  openDocument(doc);
+}
+
+function openDocument(doc) {
+  if (doc?.format === 'opentactics-replay') return watchReplay(doc);
+  if (doc?.format === 'opentactics-save') return continueSave(doc);
+  alert('That file is not an OpenTactics replay or saved game.');
+}
+
+function downloadSave(rules, seats) {
+  const st = engine.call({ op: 'state' });
+  const blob = new Blob([JSON.stringify({ format: 'opentactics-save', rules, seats, state: st.state })], { type: 'application/json' });
+  const a = h('a', { href: URL.createObjectURL(blob), download: `${st.state.name.replace(/\W+/g, '-').toLowerCase()}-day${st.state.day}.json` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** Carry on a saved game on this device. Online seats become seats for people here. */
+function continueSave(save) {
+  leaveEverything();
+  let res;
+  try { res = engine.call({ op: 'load', rules: save.rules, state: save.state }); } catch (e) { return alert(`Could not load the game: ${e.message}`); }
+  const seats = save.seats.map(st => ({ name: st.ai ? 'Computer' : st.name || 'Player', ai: !!st.ai, local: !st.ai }));
+  document.body.dataset.screen = 'play';
+  const root = h('div', { class: 'play-screen' });
+  app.replaceChildren(root);
+  match = new Match(root, {
+    engine, rules: save.rules, state: res.state, income: res.income, seats, driver: true, onWatch: watchReplay,
+    menu: [
+      { label: 'Save game', action: () => downloadSave(save.rules, match.seats) },
+      { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game?')) menu(); } },
+    ],
+  });
+  match.income = res.income;
+}
+
+/** Step through a recorded game. */
+function watchReplay(rec) {
+  leaveEverything();
+  let stats;
+  try {
+    stats = statsFor(engine, rec.rules, rec.start, rec.actions);
+    engine.call({ op: 'load', rules: rec.rules, state: rec.start });
+  } catch (e) { return alert(`Could not play the replay: ${e.message}`); }
+  document.body.dataset.screen = 'play';
+  const root = h('div', { class: 'play-screen' });
+  app.replaceChildren(root);
+  const seats = rec.seats.map(st => ({ name: st.name, ai: false, local: false }));
+  match = new Match(root, {
+    engine, rules: rec.rules, state: rec.start, seats, driver: false,
+    replay: { start: rec.start, actions: rec.actions, stats },
+    menu: [
+      { label: 'Download replay', action: () => { const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(rec)], { type: 'application/json' })), download: `${(rec.name || 'game').replace(/\W+/g, '-').toLowerCase()}-replay.json` }); a.click(); } },
+      { label: 'Leave to menu', action: menu },
+    ],
+  });
+  const total = rec.actions.length;
+  const slider = h('input', { type: 'range', min: 0, max: total, value: 0, oninput: () => match.replayJump(+slider.value) });
+  const label = h('span', { class: 'muted small' });
+  const play = h('button', { class: 'primary', onclick: () => { match.playing = !match.playing; if (match.playing && !match.replayForward()) match.playing = false; update(); } });
+  const update = () => {
+    slider.value = match.rIndex;
+    label.textContent = `Move ${match.rIndex} of ${total} · day ${match.view.day}`;
+    play.textContent = match.playing ? 'Pause' : '▶ Play';
+  };
+  match.onReplayStep = update;
+  const controls = h('div', { class: 'replay-bar' },
+    h('div', { class: 'row' },
+      h('button', { title: 'Start', onclick: () => { match.playing = false; match.replayJump(0); } }, '«'),
+      h('button', { title: 'Back one', onclick: () => { match.playing = false; match.replayJump(match.rIndex - 1); } }, '◀'),
+      play,
+      h('button', { title: 'Forward one', onclick: () => { match.playing = false; match.replayForward(); } }, '▶'),
+      h('button', { title: 'End', onclick: () => { match.playing = false; match.replayJump(total); } }, '»')),
+    slider, label);
+  $('.side', root).prepend(h('h3', {}, `Replay · ${rec.name || ''}`), controls);
+  match.setNet('Watching a replay: everything is visible.');
+  update();
+}
+
 function leaveEverything() {
   match?.destroy();
   match = null;
@@ -138,6 +222,7 @@ function menu() {
       h('button', { class: 'big', onclick: () => setup('host') }, 'Host online', h('small', {}, 'Open a room and share its code')),
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
       h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw, test and share maps')),
+      h('button', { class: 'big', onclick: () => openFile() }, 'Load replay or save', h('small', {}, 'Watch a recorded game, or carry on a saved one')),
     ),
     h('div', { class: 'install-slot' }, installButton()),
     h('footer', {}, 'Art and sounds by Kenney (CC0). Online play goes browser to browser over WebRTC.'),
@@ -468,7 +553,7 @@ async function setup(mode, preset = {}) {
     const root = h('div', { class: 'play-screen' });
     app.replaceChildren(root);
     match = new Match(root, {
-      engine, rules: cfg.rules, state: res.state, seats, driver: true, menu: menuItems,
+      engine, rules: cfg.rules, state: res.state, income: res.income, seats, driver: true, menu: menuItems, onWatch: watchReplay,
       onApplied: (player, action, state, hash) => {
         if (!room) return;
         for (const g of room.guests.values()) if (g.conn.open) g.conn.send({ t: 'act', player, action, h: hash });
@@ -489,11 +574,7 @@ async function setup(mode, preset = {}) {
   }
 
   function saveGame() {
-    const st = engine.call({ op: 'state' });
-    const blob = new Blob([JSON.stringify({ format: 'opentactics-save', rules: cfg.rules, seats: match.seats, state: st.state })], { type: 'application/json' });
-    const a = h('a', { href: URL.createObjectURL(blob), download: `${st.state.name.replace(/\W+/g, '-').toLowerCase()}-day${st.state.day}.json` });
-    a.click();
-    URL.revokeObjectURL(a.href);
+    downloadSave(cfg.rules, match.seats);
   }
 
   // Initial rules and map.
@@ -591,7 +672,7 @@ function onHostMessage(msg, lobbyEl, statusEl) {
       const root = h('div', { class: 'play-screen' });
       app.replaceChildren(root);
       match = new Match(root, {
-        engine, rules: msg.rules, state: res.state, seats, driver: false,
+        engine, rules: msg.rules, state: res.state, income: res.income, seats, driver: false, onWatch: watchReplay,
         menu: [
           { label: 'Resign', action: () => { if (msg.you >= 0 && confirm('Resign this game?')) guestLink.conn.send({ t: 'act', action: { type: 'resign' } }); } },
           { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game?')) menu(); } },
@@ -634,6 +715,7 @@ async function boot() {
     app.replaceChildren(h('div', { class: 'error' }, e.message));
     return;
   }
+  window.__ot = { engine, openDocument }; // handy in the console
   const q = new URLSearchParams(location.search);
   if (q.get('join')) return joinScreen(net.cleanCode(q.get('join')));
   if (q.get('map') || q.get('rules')) {
@@ -645,6 +727,9 @@ async function boot() {
   }
   if (q.get('edit') != null) return openEditor();
   if (q.get('demo') != null) return demo(q.get('demo') || 'river-line');
+  if (q.get('replay')) {
+    try { return openDocument(await fetchJson(q.get('replay'))); } catch (e) { alert(`Could not load the replay: ${e.message}`); }
+  }
   menu();
 }
 

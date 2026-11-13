@@ -1430,7 +1430,7 @@ impl Game {
                 None => by_team.push((t, self.score(p))),
             }
         }
-        by_team.sort_by(|a, b| b.1.cmp(&a.1));
+        by_team.sort_by_key(|e| Reverse(e.1));
         match by_team.as_slice() {
             [best, second, ..] if best.1 == second.1 => None,
             [best, ..] => Some(best.0),

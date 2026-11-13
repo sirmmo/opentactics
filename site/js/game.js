@@ -8,6 +8,7 @@
 import { T, drawTile, drawUnit, factionColor, terrainLayer } from './art.js';
 import { fingerprint } from './engine.js';
 import * as sound from './sound.js';
+import { snapshot, statsView } from './stats.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -36,6 +37,9 @@ export class Match {
    * onApplied(player, action, state, hash) after the engine accepts an action
    * onDesync()  for a guest whose copy of the game no longer matches
    * menu     [{ label, action }] extra items for the in-game menu
+   * spectate show everything, play nothing (watchers)
+   * replay   { start, actions }: a recorded game to step through
+   * onWatch(record)  open the replay of this game
    */
   constructor(root, o) {
     Object.assign(this, o);
@@ -55,6 +59,10 @@ export class Match {
     this.locals = this.seats.map((s, i) => (s?.local && !s.ai ? i : -1)).filter(i => i >= 0);
     this.lastViewer = null;
     this.hidden = new Set();
+    if (this.replay) { this.spectate = true; this.rIndex = 0; this.playing = false; }
+    // Every action, from this state on: enough to replay the game.
+    this.record = { start: structuredClone(o.state), actions: [] };
+    this.stats = [snapshot(this.rules, o.state, o.income || [])];
     this.build();
     window.__match = this; // handy in the console
     this.setState(this.seen(o.state));
@@ -285,6 +293,8 @@ export class Match {
       const hash = fingerprint(res.state);
       if (meta.hash && meta.hash !== hash) { this.queue.length = 0; this.onDesync?.(); }
       this.onApplied?.(player, action, res.state, hash);
+      this.record.actions.push([player, action]);
+      if (res.events.some(e => e.e === 'turn' || e.e === 'over')) this.stats.push(snapshot(this.rules, res.state, res.income));
       if (meta.mine) this.pending = false;
       await this.animate(res.events, this.seats[player]?.ai || !this.seats[player]?.local);
       this.setState(this.seen(res.state), res.income);
@@ -297,7 +307,8 @@ export class Match {
     if (!this.alive) return;
     this.updateHud();
     const s = this.view;
-    if (s.over) return this.showResult();
+    if (s.over && !this.replay) return this.showResult();
+    if (s.over && this.replay && this.rIndex >= this.replay.actions.length) this.showResult();
     if (s.options?.fog && this.locals.length > 1 && this.locals.includes(s.turn) && this.curtainFor !== s.turn) {
       this.curtainFor = s.turn;
       this.curtain.replaceChildren(
@@ -306,10 +317,49 @@ export class Match {
         h('button', { class: 'primary', onclick: () => { this.curtain.classList.add('hidden'); this.focusPlayer(s.turn, false); } }, 'Show my side'));
       this.curtain.classList.remove('hidden');
     }
+    if (this.replay) {
+      if (this.jumpTo != null) { const n = this.jumpTo; this.jumpTo = null; return this.replayJump(n); }
+      this.onReplayStep?.();
+      if (this.playing) {
+        clearTimeout(this.aiTimer);
+        this.aiTimer = setTimeout(() => { if (!this.replayForward()) { this.playing = false; this.onReplayStep?.(); } }, 250);
+      }
+      return;
+    }
     if (this.driver && this.seats[s.turn]?.ai && !this.busy) {
       clearTimeout(this.aiTimer);
       this.aiTimer = setTimeout(() => this.aiStep(), 180);
     }
+  }
+
+  // ---- replays -------------------------------------------------------------
+
+  /** Play the next recorded action, animated. False at the end. */
+  replayForward() {
+    if (!this.replay || this.busy || this.queue.length || this.rIndex >= this.replay.actions.length) return false;
+    const [player, action] = this.replay.actions[this.rIndex++];
+    this.commit(player, action);
+    return true;
+  }
+
+  /** Jump to just after action `n`, without animation. */
+  replayJump(n) {
+    if (!this.replay) return;
+    if (this.busy || this.queue.length) { this.jumpTo = n; this.playing = false; return; }
+    n = Math.max(0, Math.min(this.replay.actions.length, n));
+    let st = this.engine.call({ op: 'load', rules: this.rules, state: this.replay.start });
+    for (const [player, action] of this.replay.actions.slice(0, n)) {
+      try { st = this.engine.call({ op: 'act', player, action }); } catch { break; }
+    }
+    this.rIndex = n;
+    this.log = [];
+    this.logEl.replaceChildren();
+    this.clearUi();
+    this.anim = { moving: null, blink: null, effects: [] };
+    this.resultShown = false;
+    this.menuEl.classList.add('hidden');
+    this.setState(st.state, st.income);
+    this.afterIdle();
   }
 
   aiStep() {
@@ -352,6 +402,11 @@ export class Match {
     this.clearUi();
     this.anim = { moving: null, blink: null, effects: [] };
     this.locals = this.seats.map((st, i) => (st?.local && !st.ai ? i : -1)).filter(i => i >= 0);
+    if (!this.replay) {
+      this.record = { start: structuredClone(state), actions: [] };
+      this.stats = [snapshot(this.rules, state, income || [])];
+    }
+    this.resultShown = false;
     this.setState(this.seen(state), income);
     this.afterIdle();
   }
@@ -795,8 +850,39 @@ export class Match {
     this.menuEl.replaceChildren(
       h('div', { class: 'title big', style: `color:${w == null ? '#fff' : factionColor(this.rules, w)}` }, text),
       h('div', { class: 'muted' }, `Day ${this.view.day}`),
+      h('button', { onclick: () => this.showStats() }, 'Stats'),
+      this.onWatch && !this.replay ? h('button', { onclick: () => this.onWatch(this.replayRecord()) }, 'Watch replay') : null,
+      !this.replay ? h('button', { onclick: () => this.downloadReplay() }, 'Save replay') : null,
+      this.replay ? h('button', { onclick: () => this.menuEl.classList.add('hidden') }, 'Close') : null,
       ...(this.menu || []).map(m => h('button', { onclick: () => m.action() }, m.label)),
     );
+    this.menuEl.classList.remove('hidden');
+  }
+
+  /** Everything needed to watch this game again. */
+  replayRecord() {
+    return {
+      format: 'opentactics-replay', version: 1, name: this.view.name, date: new Date().toISOString(),
+      rules: this.rules, seats: this.seats.map((st, i) => ({ name: this.playerName(i), ai: !!st?.ai })),
+      start: this.record.start, actions: this.record.actions,
+    };
+  }
+
+  downloadReplay() {
+    const rec = this.replayRecord();
+    const blob = new Blob([JSON.stringify(rec)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `${(rec.name || 'game').replace(/\W+/g, '-').toLowerCase()}-replay.json` });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  showStats() {
+    const names = this.view.players.map((_, i) => this.playerName(i));
+    const snaps = this.replay?.stats || this.stats;
+    this.menuEl.replaceChildren(
+      h('div', { class: 'title' }, `${this.view.name} · stats`),
+      statsView(this.rules, snaps, names),
+      h('button', { onclick: () => { this.resultShown = false; this.showResult(); } }, 'Back'));
     this.menuEl.classList.remove('hidden');
   }
 

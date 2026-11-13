@@ -15,6 +15,7 @@ thread_local! {
 }
 
 #[derive(Deserialize)]
+#[allow(clippy::large_enum_variant)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
     /// Start a game from a rule set and a map, with optional rules switched on.
