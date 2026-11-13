@@ -51,9 +51,13 @@ export class Match {
     this.scale = 3;
     this.log = [];
     this.alive = true;
+    // Seats a person plays on this device; fog of war shows the game through their eyes.
+    this.locals = this.seats.map((s, i) => (s?.local && !s.ai ? i : -1)).filter(i => i >= 0);
+    this.lastViewer = null;
+    this.hidden = new Set();
     this.build();
     window.__match = this; // handy in the console
-    this.setState(o.state);
+    this.setState(this.seen(o.state));
     this.fit();
     const first = this.seats[this.view.turn]?.local ? this.view.turn : this.seats.findIndex(x => x?.local);
     if (first >= 0) requestAnimationFrame(() => this.focusPlayer(first, false));
@@ -80,6 +84,9 @@ export class Match {
     this.players = h('div', { class: 'players' });
     this.dayEl = h('div', { class: 'day' });
     this.endBtn = h('button', { class: 'primary', onclick: () => this.endTurn(), title: 'End turn (E)' }, 'End turn');
+    this.weatherEl = h('div', { class: 'weather hidden' });
+    this.powerBtn = h('button', { class: 'power hidden', onclick: () => this.openPowers(), title: 'Powers' });
+    this.curtain = h('div', { class: 'curtain hidden' });
     this.soundBtn = h('button', { class: 'icon', title: 'Sound', onclick: () => { sound.setMuted(!sound.isMuted()); this.soundBtn.textContent = sound.isMuted() ? '🔇' : '🔊'; } }, sound.isMuted() ? '🔇' : '🔊');
     this.info = h('div', { class: 'info' });
     this.logEl = h('ol', { class: 'log' });
@@ -92,9 +99,9 @@ export class Match {
     const zoomIn = h('button', { class: 'icon', title: 'Zoom in', onclick: () => this.zoom(1) }, '+');
     const zoomOut = h('button', { class: 'icon', title: 'Zoom out', onclick: () => this.zoom(-1) }, '−');
     this.root.replaceChildren(
-      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.endBtn),
+      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
-        h('div', { class: 'stage' }, this.scroller, this.popup, this.bannerEl, this.toastEl, this.menuEl),
+        h('div', { class: 'stage' }, this.scroller, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
         h('aside', { class: 'side' }, this.netEl, this.info, h('h3', {}, 'Log'), this.logEl)),
     );
     this.ctx = this.canvas.getContext('2d');
@@ -171,6 +178,33 @@ export class Match {
     this.updateHud();
   }
 
+  /** Whose eyes the board is shown through, or null to show everything. */
+  viewer(turn = this.view?.turn) {
+    if (this.spectate || !this.locals.length) return null;
+    if (this.locals.length === 1) return this.locals[0];
+    if (this.locals.includes(turn)) return turn;
+    return this.lastViewer ?? this.locals[0];
+  }
+
+  /** What the viewer knows of the engine's current game (hidden enemies left out). */
+  seen(state) {
+    const v = this.viewer(state.turn);
+    if (v == null) { this.hidden = new Set(); return state; }
+    this.lastViewer = v;
+    try {
+      const r = this.engine.call({ op: 'view', player: v });
+      this.hidden = new Set(r.hidden);
+      return r.state;
+    } catch {
+      this.hidden = new Set();
+      return state;
+    }
+  }
+
+  team(p) { return this.view.players[p]?.team ?? 1000 + p; }
+  allied(a, b) { return a === b || this.team(a) === this.team(b); }
+  seesTile(x, y) { return !this.hidden.has(y * this.view.width + x); }
+
   playerName(p) {
     return this.seats[p]?.name || this.rules.factions[p].name;
   }
@@ -185,15 +219,36 @@ export class Match {
   ownerAt(x, y) { return this.view.owner[y * this.view.width + x]; }
 
   updateHud() {
-    const s = this.view, r = this.rules;
+    const s = this.view, r = this.rules, o = s.options || {};
     this.dayEl.textContent = `Day ${s.day}`;
+    const teams = o.teams?.length ? [...new Set(o.teams)] : [];
     this.players.replaceChildren(...s.players.map((p, i) => h('div', {
       class: `chip${i === s.turn && !s.over ? ' active' : ''}${p.alive ? '' : ' out'}`,
       style: `--c:${factionColor(r, i)}`,
-      title: `${this.playerName(i)}: ${s.units.filter(u => u.player === i).length} units`,
+      title: `${this.playerName(i)}: ${s.units.filter(u => u.player === i).length} units${p.power != null ? ` · ${r.powers[p.power].name} active` : ''}`,
     }, h('span', { class: 'dot' }), h('b', {}, this.playerName(i)), h('span', { class: 'funds' }, `${p.funds}`),
       this.income[i] != null ? h('small', {}, `+${this.income[i]}`) : null,
+      teams.length > 1 && p.team != null ? h('small', { class: 'tag team' }, `T${teams.indexOf(p.team) + 1}`) : null,
+      p.power != null ? h('small', { class: 'tag pow' }, `⚡${r.powers[p.power].name}`) : null,
       this.seats[i]?.ai ? h('small', { class: 'tag' }, 'CPU') : null)));
+    const weatherOn = o.weather && o.weather !== 'off' && r.weather?.length;
+    this.weatherEl.classList.toggle('hidden', !weatherOn);
+    if (weatherOn) {
+      const w = r.weather[s.weather] || r.weather[0];
+      this.weatherEl.textContent = w.name;
+      this.weatherEl.title = w.description || '';
+      this.weatherEl.dataset.w = w.id;
+    }
+    const powersOn = o.powers && r.powers?.length;
+    const me = this.seats[s.turn]?.local && !this.seats[s.turn]?.ai ? s.turn : this.viewer();
+    this.powerBtn.classList.toggle('hidden', !powersOn || me == null);
+    if (powersOn && me != null) {
+      const cheapest = Math.min(...r.powers.map(p => p.charge));
+      const charge = s.players[me].charge || 0;
+      const ready = charge >= cheapest && s.players[me].power == null;
+      this.powerBtn.textContent = `⚡ ${Math.floor(100 * Math.min(1, charge / Math.max(...r.powers.map(p => p.charge))))}%`;
+      this.powerBtn.classList.toggle('ready', ready && this.myTurn());
+    }
     const mine = this.myTurn();
     this.endBtn.disabled = !mine;
     this.endBtn.textContent = s.over ? 'Game over' : mine ? 'End turn' : this.seats[s.turn]?.local ? 'Wait…' : `${this.playerName(s.turn)}…`;
@@ -232,7 +287,7 @@ export class Match {
       this.onApplied?.(player, action, res.state, hash);
       if (meta.mine) this.pending = false;
       await this.animate(res.events, this.seats[player]?.ai || !this.seats[player]?.local);
-      this.setState(res.state, res.income);
+      this.setState(this.seen(res.state), res.income);
     }
     this.busy = false;
     this.afterIdle();
@@ -243,6 +298,14 @@ export class Match {
     this.updateHud();
     const s = this.view;
     if (s.over) return this.showResult();
+    if (s.options?.fog && this.locals.length > 1 && this.locals.includes(s.turn) && this.curtainFor !== s.turn) {
+      this.curtainFor = s.turn;
+      this.curtain.replaceChildren(
+        h('div', { class: 'big', style: `color:${factionColor(this.rules, s.turn)}` }, `${this.playerName(s.turn)}'s turn`),
+        h('p', { class: 'muted' }, 'Fog of war is on. Pass the device, then tap to see your side of the battle.'),
+        h('button', { class: 'primary', onclick: () => { this.curtain.classList.add('hidden'); this.focusPlayer(s.turn, false); } }, 'Show my side'));
+      this.curtain.classList.remove('hidden');
+    }
     if (this.driver && this.seats[s.turn]?.ai && !this.busy) {
       clearTimeout(this.aiTimer);
       this.aiTimer = setTimeout(() => this.aiStep(), 180);
@@ -288,7 +351,8 @@ export class Match {
     this.pending = false;
     this.clearUi();
     this.anim = { moving: null, blink: null, effects: [] };
-    this.setState(state, income);
+    this.locals = this.seats.map((st, i) => (st?.local && !st.ai ? i : -1)).filter(i => i >= 0);
+    this.setState(this.seen(state), income);
     this.afterIdle();
   }
 
@@ -329,17 +393,103 @@ export class Match {
         }
         case 'attack': {
           const a = unit(ev.attacker), d = unit(ev.defender);
-          if (!a || !d) break;
+          if (!d) break;
           sound.play('attack');
-          this.effect({ kind: 'shot', from: [a.x, a.y], to: [d.x, d.y], dur: 220, color: factionColor(this.rules, a.player) });
+          if (a) this.effect({ kind: 'shot', from: [a.x, a.y], to: [d.x, d.y], dur: 220, color: factionColor(this.rules, a.player) });
           await sleep(fast ? 150 : 220);
           this.anim.blink = d.id;
           this.effect({ kind: 'text', at: [d.x, d.y], text: `-${ev.damage}%`, color: '#fff2a8', dur: 900 });
           d.hp = ev.hp;
-          a.moved = a.moved || !ev.counter;
+          if (a) a.moved = a.moved || !ev.counter;
           await sleep(fast ? 280 : 420);
           this.anim.blink = null;
-          this.say(`${this.unitName(a)} hits ${this.unitName(d)} for ${ev.damage}%${ev.counter ? ' (counter)' : ''}`, a.player);
+          this.say(`${a ? this.unitName(a) : 'Something unseen'} hits ${this.unitName(d)} for ${ev.damage}%${ev.counter ? ' (counter)' : ''}`, a?.player ?? d.player);
+          break;
+        }
+        case 'trapped': {
+          const u = unit(ev.unit);
+          sound.play('error');
+          this.effect({ kind: 'text', at: [ev.x, ev.y], text: 'Ambush!', color: '#ff9d8a', dur: 1100 });
+          if (u) this.say(`${this.unitName(u)} runs into a hidden enemy`, u.player);
+          await sleep(fast ? 300 : 500);
+          break;
+        }
+        case 'load': {
+          const u = unit(ev.unit), t = unit(ev.into);
+          if (u && t) { t.cargo = [...(t.cargo || []), { ...u }]; this.say(`${this.unitName(u)} boards the ${this.rules.units[t.kind].name}`, u.player); }
+          s.units = s.units.filter(x => x.id !== ev.unit);
+          sound.play('select');
+          break;
+        }
+        case 'unload': {
+          const t = unit(ev.from);
+          if (t) t.cargo = (t.cargo || []).filter(c => c.id !== ev.unit.id);
+          if (this.allied(ev.unit.player, this.viewer() ?? ev.unit.player) || this.seesTile(ev.unit.x, ev.unit.y)) {
+            s.units.push({ ...ev.unit });
+            this.effect({ kind: 'ring', at: [ev.unit.x, ev.unit.y], dur: 400, color: factionColor(this.rules, ev.unit.player) });
+          }
+          sound.play('move');
+          await sleep(fast ? 120 : 200);
+          break;
+        }
+        case 'join': {
+          const u = unit(ev.unit), t = unit(ev.into);
+          s.units = s.units.filter(x => x.id !== ev.unit);
+          if (t) {
+            t.hp = ev.hp; t.moved = true;
+            this.effect({ kind: 'text', at: [t.x, t.y], text: ev.refund ? `+${ev.refund}` : 'Joined', color: '#9dff9d', dur: 900 });
+            this.say(`${this.unitName(t)} units join${ev.refund ? ` (+${ev.refund} funds)` : ''}`, t.player);
+            if (ev.refund) { s.players[t.player].funds += ev.refund; this.updateHud(); }
+          } else if (u) this.say(`${this.unitName(u)} joins another`, u.player);
+          sound.play('capture');
+          await sleep(fast ? 150 : 250);
+          break;
+        }
+        case 'dive': {
+          const u = unit(ev.unit);
+          if (u) {
+            u.dived = ev.dived;
+            this.effect({ kind: 'text', at: [u.x, u.y], text: ev.dived ? 'Dive' : 'Surface', color: '#bff0ff', dur: 800 });
+            if (ev.dived && !this.allied(u.player, this.viewer() ?? u.player)) s.units = s.units.filter(x => x.id !== u.id);
+          }
+          break;
+        }
+        case 'supply': {
+          const u = unit(ev.unit);
+          for (const id of ev.units) {
+            const o = unit(id);
+            if (o) this.effect({ kind: 'text', at: [o.x, o.y], text: 'Supplied', color: '#9dff9d', dur: 900 });
+          }
+          if (u) this.say(`${this.unitName(u)} resupplies ${ev.units.length} unit${ev.units.length === 1 ? '' : 's'}`, u.player);
+          sound.play('build');
+          break;
+        }
+        case 'crash': {
+          const gone = unit(ev.unit);
+          s.units = s.units.filter(u => u.id !== ev.unit);
+          if (gone || this.seesTile(ev.x, ev.y)) {
+            sound.play('destroy');
+            this.effect({ kind: 'boom', at: [ev.x, ev.y], dur: 600 });
+          }
+          if (gone) this.say(`${this.unitName(gone)} runs out of fuel and is lost`, gone.player);
+          await sleep(fast ? 250 : 400);
+          break;
+        }
+        case 'weather': {
+          s.weather = ev.weather;
+          const w = this.rules.weather?.[ev.weather];
+          this.updateHud();
+          if (w) { this.banner(w.name, w.description || '', '#bfe4ff'); this.say(`The weather turns: ${w.name}`, s.turn); await sleep(700); }
+          break;
+        }
+        case 'power': {
+          const pw = this.rules.powers?.[ev.power];
+          s.players[ev.player].power = ev.power;
+          s.players[ev.player].charge = Math.max(0, (s.players[ev.player].charge || 0) - (pw?.charge || 0));
+          this.updateHud();
+          sound.play('win');
+          if (pw) { this.banner(pw.name, `${this.playerName(ev.player)} · ${pw.description || ''}`, factionColor(this.rules, ev.player)); this.say(`${this.playerName(ev.player)} uses ${pw.name}`, ev.player); }
+          await sleep(fast ? 700 : 1100);
           break;
         }
         case 'destroy': {
@@ -366,11 +516,12 @@ export class Match {
         }
         case 'build': {
           sound.play('build');
-          s.units.push({ ...ev.unit });
+          const seen = this.allied(ev.unit.player, this.viewer() ?? ev.unit.player) || this.seesTile(ev.unit.x, ev.unit.y);
+          if (seen) s.units.push({ ...ev.unit });
           s.players[ev.unit.player].funds -= this.rules.units[ev.unit.kind].cost;
           this.updateHud();
-          this.effect({ kind: 'ring', at: [ev.unit.x, ev.unit.y], dur: 400, color: factionColor(this.rules, ev.unit.player) });
-          this.say(`${this.playerName(ev.unit.player)} builds ${this.rules.units[ev.unit.kind].name}`, ev.unit.player);
+          if (seen) this.effect({ kind: 'ring', at: [ev.unit.x, ev.unit.y], dur: 400, color: factionColor(this.rules, ev.unit.player) });
+          this.say(`${this.playerName(ev.unit.player)} builds ${seen ? this.rules.units[ev.unit.kind].name : 'a unit'}`, ev.unit.player);
           await sleep(fast ? 150 : 250);
           break;
         }
@@ -448,7 +599,7 @@ export class Match {
   cancel() {
     if (!this.menuEl.classList.contains('hidden')) return this.menuEl.classList.add('hidden');
     const ui = this.ui;
-    if (ui.mode === 'menu' || ui.mode === 'target') {
+    if (ui.mode === 'menu' || ui.mode === 'target' || ui.mode === 'drop') {
       this.popup.classList.add('hidden');
       this.ui = { ...ui, mode: 'select', dest: null, path: null };
       return;
@@ -498,6 +649,11 @@ export class Match {
       this.ui = { ...ui, mode: 'menu', dest: { x, y }, path: o.path, options: o };
       return this.openActions(x, y, o);
     }
+    if (ui.mode === 'drop') {
+      if (!ui.dropTiles.has(key(x, y))) return;
+      ui.drops.push({ unit: ui.queue.shift().unit, x, y });
+      return this.nextDrop();
+    }
     if (ui.mode === 'target') {
       const target = ui.options.targets.find(t => t.x === x && t.y === y);
       if (!target) return this.cancel();
@@ -536,17 +692,70 @@ export class Match {
   openActions(x, y, o) {
     const u = this.ui.unit;
     const items = [];
+    const act = (label, then) => items.push(h('button', { onclick: () => this.submit({ type: 'move', unit: u.id, x, y, then }) }, label));
+    if (o.load) act('Board', 'load');
+    if (o.join) act('Join', 'join');
     if (o.targets.length) items.push(h('button', { onclick: () => {
       this.popup.classList.add('hidden');
       this.ui = { ...this.ui, mode: 'target' };
       this.showInfo();
     } }, 'Fire'));
-    if (o.capture) items.push(h('button', { onclick: () => this.submit({ type: 'move', unit: u.id, x, y, then: 'capture' }) }, 'Capture'));
-    items.push(h('button', { onclick: () => this.submit({ type: 'move', unit: u.id, x, y, then: 'wait' }) }, 'Wait'));
+    if (o.capture) act('Capture', 'capture');
+    if (o.unload?.length) items.push(h('button', { onclick: () => this.startDrop(x, y, o) }, 'Unload'));
+    if (o.supply) act('Resupply', 'supply');
+    if (o.dive) act('Dive', 'dive');
+    if (o.surface) act('Surface', 'surface');
+    if (o.stop !== false) act('Wait', 'wait');
     items.push(h('button', { class: 'quiet', onclick: () => this.cancel() }, 'Cancel'));
     this.popup.replaceChildren(...items);
     this.placePopup(x, y);
     items[0].focus({ preventScroll: true });
+  }
+
+  /** Unloading: pick a tile for each carried unit, one after another. */
+  startDrop(x, y, o) {
+    this.popup.classList.add('hidden');
+    this.ui = { ...this.ui, mode: 'drop', drops: [], queue: o.unload.map(c => ({ ...c })) };
+    this.nextDrop();
+  }
+
+  nextDrop() {
+    const ui = this.ui;
+    const used = new Set(ui.drops.map(d => key(d.x, d.y)));
+    while (ui.queue.length && !ui.queue[0].tiles.some(t => !used.has(key(t[0], t[1])))) ui.queue.shift();
+    if (!ui.queue.length) return this.finishDrop();
+    const c = ui.queue[0];
+    ui.dropTiles = new Set(c.tiles.map(t => key(t[0], t[1])).filter(k => !used.has(k)));
+    this.popup.replaceChildren(
+      h('div', { class: 'title' }, `Where does the ${this.rules.units[c.kind].name} get out?`),
+      ui.queue.length > 1 ? h('button', { onclick: () => { ui.queue.shift(); this.nextDrop(); } }, 'Keep it on board') : null,
+      ui.drops.length ? h('button', { class: 'primary', onclick: () => this.finishDrop() }, 'Done') : null,
+      h('button', { class: 'quiet', onclick: () => this.cancel() }, 'Cancel'));
+    this.placePopup(ui.dest.x, ui.dest.y);
+  }
+
+  finishDrop() {
+    const ui = this.ui;
+    if (!ui.drops.length) return this.cancel();
+    this.submit({ type: 'move', unit: ui.unit.id, x: ui.dest.x, y: ui.dest.y, then: { unload: ui.drops } });
+  }
+
+  openPowers() {
+    const r = this.rules, s = this.view;
+    const me = this.seats[s.turn]?.local && !this.seats[s.turn]?.ai ? s.turn : this.viewer();
+    if (me == null) return;
+    const p = s.players[me];
+    const usable = this.myTurn() && me === s.turn && p.power == null;
+    const items = r.powers.map(pw => h('button', {
+      class: 'buy power-row', disabled: !usable || (p.charge || 0) < pw.charge, title: pw.description || '',
+      onclick: () => { this.menuEl.classList.add('hidden'); this.submit({ type: 'power', power: pw.id }); },
+    }, h('span', {}, h('b', {}, pw.name), h('small', { class: 'muted' }, pw.description || '')), h('b', {}, `${pw.charge}`)));
+    this.menuEl.replaceChildren(
+      h('div', { class: 'title' }, `Powers · charge ${p.charge || 0}`),
+      h('div', { class: 'muted small' }, p.power != null ? `${r.powers[p.power].name} is active until your next turn.` : 'Charge comes from damage you deal (and half of what you take). One power at a time; it lasts until your next turn.'),
+      h('div', { class: 'buylist' }, items),
+      h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
+    this.menuEl.classList.remove('hidden');
   }
 
   openBuild(x, y, builds) {
@@ -577,8 +786,11 @@ export class Match {
     if (this.resultShown) return;
     this.resultShown = true;
     const w = this.view.winner;
+    const all = this.view.winners?.length ? this.view.winners : w == null ? [] : [w];
     sound.play('win');
-    const text = w == null ? 'Draw' : `${this.playerName(w)} wins`;
+    const m = this.view.mission;
+    const text = m ? (all.includes(m.player) ? 'Mission complete' : 'Mission failed')
+      : w == null ? 'Draw' : all.length > 1 ? `${all.map(p => this.playerName(p)).join(' & ')} win` : `${this.playerName(w)} wins`;
     this.say(`Game over: ${text}`, w ?? 0);
     this.menuEl.replaceChildren(
       h('div', { class: 'title big', style: `color:${w == null ? '#fff' : factionColor(this.rules, w)}` }, text),
@@ -609,6 +821,11 @@ export class Match {
         h('div', {}, h('b', {}, d.name), h('div', { class: 'muted' }, this.playerName(unit.player)),
           h('div', { class: 'hp' }, h('i', { style: `width:${unit.hp}%` })),
           h('div', { class: 'stats' }, `HP ${Math.ceil(unit.hp / 10)}/10 · Move ${d.moves} · Range ${d.range ? (d.range[0] === d.range[1] ? d.range[0] : d.range.join('–')) : 1}`),
+          this.view.options?.supply && (d.fuel || d.ammo) ? h('div', { class: 'stats' },
+            [d.fuel ? `Fuel ${unit.fuel}/${d.fuel}` : null, d.ammo ? `Ammo ${unit.ammo}/${d.ammo}` : null].filter(Boolean).join(' · ')) : null,
+          unit.cargo?.length ? h('div', { class: 'stats' }, `Carrying ${unit.cargo.map(c => r.units[c.kind].name).join(', ')}`)
+            : d.carry?.length ? h('div', { class: 'stats muted' }, `Carries ${d.carry.map(id => r.units.find(x => x.id === id)?.name).join(', ')}`) : null,
+          unit.dived ? h('div', { class: 'stats' }, 'Dived: hidden from enemies not next to it') : null,
           d.description ? h('div', { class: 'muted small' }, d.description) : null)));
     }
     if (at) {
@@ -669,21 +886,45 @@ export class Match {
       shade(threatOnly, `rgba(232,70,60,${own ? 0.22 : 0.3})`);
       shade(ui.stops, own ? `rgba(255,255,255,${pulse})` : 'rgba(255,255,255,0.18)', own ? 'rgba(255,255,255,0.35)' : null);
     }
+    if (ui.mode === 'drop' && ui.dropTiles) shade(ui.dropTiles, `rgba(140,220,255,${0.3 + 0.1 * Math.sin(now / 250)})`, 'rgba(140,220,255,0.6)');
     if (ui.mode === 'target') {
       ctx.globalAlpha = 0.75;
       for (const t of ui.options.targets) drawTile(ctx, 79, t.x * size, t.y * size, size);
       ctx.globalAlpha = 1;
     }
-    if (ui.path && ui.path.length > 1 && ui.mode !== 'target') this.drawPath(ui.path, factionColor(r, ui.unit.player));
+    if (ui.path && ui.path.length > 1 && ui.mode !== 'target' && ui.mode !== 'drop') this.drawPath(ui.path, factionColor(r, ui.unit.player));
 
+    // Fog of war: darken what this side cannot see.
+    if (this.hidden.size) {
+      ctx.fillStyle = 'rgba(10,10,24,0.5)';
+      for (const i of this.hidden) ctx.fillRect((i % s.width) * size, Math.floor(i / s.width) * size, size, size);
+    }
+
+    const supply = s.options?.supply;
     for (const u of s.units) {
       if (this.anim.blink === u.id && Math.floor(now / 70) % 2) continue;
-      const ghost = ui.mode === 'menu' || ui.mode === 'target' ? ui.unit?.id === u.id : false;
+      const ghost = ui.mode === 'menu' || ui.mode === 'target' || ui.mode === 'drop' ? ui.unit?.id === u.id : false;
       const x = ghost ? ui.dest.x : u.x, y = ghost ? ui.dest.y : u.y;
+      if (u.dived) ctx.globalAlpha = 0.5;
       drawUnit(ctx, r, u.kind, u.player, x * size, y * size, size, u.moved && u.player === s.turn);
+      ctx.globalAlpha = 1;
       const hp = Math.ceil(u.hp / 10);
       if (hp < 10) drawTile(ctx, 180 + hp, x * size + size / 2, y * size + size / 2, size / 2);
       if (u.capture > 0) drawTile(ctx, 194, x * size, y * size + size / 2, size / 2);
+      if (u.cargo?.length) {
+        ctx.fillStyle = '#1b1a26';
+        ctx.fillRect(x * size + size * 0.66, y * size, size * 0.34, size * 0.3);
+        ctx.fillStyle = '#fff';
+        ctx.font = `${Math.round(size * 0.28)}px kenney-mono, monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(u.cargo.length), x * size + size * 0.83, y * size + size * 0.16);
+      }
+      if (supply) {
+        const d = r.units[u.kind];
+        const low = (d.fuel && u.fuel <= Math.max(d.fuel / 4, (d.fuel_per_day || 0) * 2)) || (d.ammo && u.ammo === 0);
+        if (low && this.allied(u.player, this.viewer() ?? u.player)) drawTile(ctx, d.ammo && u.ammo === 0 ? 191 : 192, x * size, y * size + size / 2, size / 2);
+      }
     }
 
     if (this.hover && (this.myTurn() || ui.mode === 'inspect' || ui.mode === 'idle')) {

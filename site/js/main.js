@@ -149,7 +149,7 @@ function menu() {
 async function setup(mode, preset = {}) {
   leaveEverything();
   document.body.dataset.screen = 'setup';
-  const cfg = { mode, rules: null, rulesName: '', map: null, seats: [] };
+  const cfg = { mode, rules: null, rulesName: '', map: null, seats: [], options: { fog: false, supply: false, weather: 'off', powers: false } };
   const err = h('div', { class: 'error hidden' });
   const showError = e => { err.textContent = e.message || String(e); err.classList.remove('hidden'); };
   const clearError = () => err.classList.add('hidden');
@@ -159,6 +159,7 @@ async function setup(mode, preset = {}) {
   const rulesInfo = h('div', { class: 'muted small' });
   const seatsEl = h('div', { class: 'seats' });
   const roomEl = h('div', { class: 'room hidden' });
+  const optsEl = h('div', { class: 'opts' });
   const linkEl = h('div', {});
   const startBtn = h('button', { class: 'primary', disabled: true, onclick: () => start() }, mode === 'host' ? 'Start the match' : 'Start');
 
@@ -172,7 +173,7 @@ async function setup(mode, preset = {}) {
           h('button', { onclick: () => readFile('.json,application/json').then(m => chooseMap(m)).catch(showError) }, 'Load file')),
         mapList),
       h('section', { class: 'config' },
-        h('h3', {}, 'Rules'), h('div', { class: 'row' }, rulesSel), rulesInfo,
+        h('h3', {}, 'Rules'), h('div', { class: 'row' }, rulesSel), rulesInfo, optsEl,
         h('h3', {}, 'Players'), seatsEl, roomEl, linkEl)),
   ));
 
@@ -185,6 +186,7 @@ async function setup(mode, preset = {}) {
     cfg.rules = doc;
     cfg.rulesName = name || doc.name;
     rulesInfo.textContent = `${doc.name}: ${doc.description || ''} ${doc.units.length} units, ${doc.terrains.length} terrains, ${doc.factions.length} armies.`;
+    renderOptions();
     await renderMaps();
     if (cfg.map) await chooseMap(cfg.map, true);
   }
@@ -268,7 +270,31 @@ async function setup(mode, preset = {}) {
       }));
     }
     renderSeats();
+    renderOptions();
     startBtn.disabled = false;
+  }
+
+  /** Optional rules for this game. They apply to every player alike. */
+  function renderOptions() {
+    const r = cfg.rules, o = cfg.options;
+    if (!r) return optsEl.replaceChildren();
+    if (cfg.map?.mission) return optsEl.replaceChildren(h('p', { class: 'muted small' }, 'This mission sets its own rules.'));
+    const box = (k, label, hint) => h('label', { class: 'opt', title: hint },
+      h('input', { type: 'checkbox', checked: o[k], onchange: e => { o[k] = e.target.checked; sendLobby(); } }), h('span', {}, label, h('small', {}, hint)));
+    const items = [
+      box('fog', 'Fog of war', 'You only see what your units and property see.'),
+      box('supply', 'Fuel and ammo', 'Units run out; aircraft and ships are lost with empty tanks. Refill at your property or next to a carrier.'),
+    ];
+    if (r.powers?.length) items.push(box('powers', 'Powers', `Charge up by fighting, then use one of ${r.powers.length} powers. Everyone picks from the same list.`));
+    if (r.weather?.length > 1) {
+      if (o.weather !== 'off' && o.weather !== 'random' && !r.weather.some(w => w.id === o.weather)) o.weather = 'off';
+      const sel = h('select', { onchange: e => { o.weather = e.target.value; sendLobby(); } },
+        h('option', { value: 'off', selected: o.weather === 'off' }, 'Off'),
+        h('option', { value: 'random', selected: o.weather === 'random' }, 'Changes each day'),
+        ...r.weather.map(w => h('option', { value: w.id, selected: o.weather === w.id }, `Always ${w.name.toLowerCase()}`)));
+      items.push(h('label', { class: 'opt' }, h('span', {}, 'Weather', h('small', {}, 'Rain and snow slow units down.')), sel));
+    }
+    optsEl.replaceChildren(h('h3', {}, 'Optional rules'), ...items);
   }
 
   /** A link that opens this setup screen with the chosen map (only for maps that live at a URL). */
@@ -297,8 +323,12 @@ async function setup(mode, preset = {}) {
         sendLobby();
       };
       const who = seat.kind === 'peer' ? `${seat.name}${seat.conn?.open ? '' : ' (gone)'}` : seat.kind === 'open' ? 'waiting…' : seat.kind === 'ai' ? 'Computer' : seat.name || 'You';
+      // Teams only make sense with three or more seats.
+      const team = cfg.seats.length > 2 && !cfg.map.mission ? h('select', { class: 'team', title: 'Team', onchange: e => { seat.team = e.target.value === '' ? null : +e.target.value; sendLobby(); } },
+        h('option', { value: '', selected: seat.team == null }, 'No team'),
+        ...[1, 2, 3, 4].slice(0, Math.floor(cfg.seats.length / 2) + (cfg.seats.length > 4 ? 1 : 0)).map(t => h('option', { value: t, selected: seat.team === t }, `Team ${t}`))) : null;
       return h('div', { class: 'seat', style: `--c:${factionColor(cfg.rules, i)}` },
-        h('span', { class: 'dot' }), h('b', {}, cfg.rules.factions[i].name), sel, h('span', { class: 'who' }, who));
+        h('span', { class: 'dot' }), h('b', {}, cfg.rules.factions[i].name), sel, h('span', { class: 'who' }, who, team));
     }));
   }
 
@@ -325,9 +355,20 @@ async function setup(mode, preset = {}) {
       t: 'lobby',
       map: cfg.map ? { name: cfg.map.name, players: cfg.map.players } : null,
       rules: cfg.rulesName,
-      seats: cfg.seats.map((s, i) => ({ name: s.kind === 'ai' ? 'Computer' : s.kind === 'open' ? '' : s.name, kind: s.kind, color: cfg.rules && factionColor(cfg.rules, i), faction: cfg.rules?.factions[i]?.name })),
+      options: optionsText(),
+      seats: cfg.seats.map((s, i) => ({ name: s.kind === 'ai' ? 'Computer' : s.kind === 'open' ? '' : s.name, kind: s.kind, color: cfg.rules && factionColor(cfg.rules, i), faction: cfg.rules?.factions[i]?.name, team: s.team ?? null })),
       you: cfg.seats.findIndex(s => s.token === token),
     };
+  }
+
+  function optionsText() {
+    const o = cfg.options, list = [];
+    if (o.fog) list.push('fog of war');
+    if (o.supply) list.push('fuel and ammo');
+    if (o.powers) list.push('powers');
+    if (o.weather === 'random') list.push('changing weather');
+    else if (o.weather !== 'off') list.push(`${o.weather} all game`);
+    return list.join(', ');
   }
 
   function sendLobby() {
@@ -402,9 +443,13 @@ async function setup(mode, preset = {}) {
       if (!confirm('Some online seats are still empty. Let the computer play them?')) return;
       for (const s of cfg.seats) if (s.kind === 'open') s.kind = 'ai';
     }
+    const teamed = cfg.seats.some(st => st.team != null);
+    const teams = teamed ? cfg.seats.map((st, i) => st.team ?? 100 + i) : [];
+    if (teamed && new Set(teams).size < 2) return showError(new Error('Everyone is on one team: there would be nobody to fight.'));
+    const options = { ...cfg.options, teams };
     let res;
     try {
-      res = engine.call({ op: 'new', rules: cfg.rules, map: cfg.map, seed: Math.floor(Math.random() * 2 ** 31) });
+      res = engine.call({ op: 'new', rules: cfg.rules, map: cfg.map, seed: Math.floor(Math.random() * 2 ** 31), setup: { options } });
     } catch (e) { return showError(e); }
     document.body.dataset.screen = 'play';
     const seats = cfg.seats.map(s => ({ name: s.kind === 'ai' ? 'Computer' : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai' }));
@@ -523,9 +568,9 @@ async function reconnect(code, tries = 0) {
 function onHostMessage(msg, lobbyEl, statusEl) {
   if (!msg || typeof msg !== 'object') return;
   if (msg.t === 'lobby' && lobbyEl) {
-    statusEl.textContent = msg.map ? `Map: ${msg.map.name} · Rules: ${msg.rules}. Waiting for the host to start…` : 'The host is choosing a map…';
+    statusEl.textContent = msg.map ? `Map: ${msg.map.name} · Rules: ${msg.rules}${msg.options ? ` with ${msg.options}` : ''}. Waiting for the host to start…` : 'The host is choosing a map…';
     lobbyEl.replaceChildren(...msg.seats.map((s, i) => h('div', { class: `seat${i === msg.you ? ' me' : ''}`, style: `--c:${s.color}` },
-      h('span', { class: 'dot' }), h('b', {}, s.faction), h('span', { class: 'who' }, i === msg.you ? `${s.name} (you)` : s.kind === 'open' ? 'open seat' : s.name))));
+      h('span', { class: 'dot' }), h('b', {}, s.faction), h('span', { class: 'who' }, i === msg.you ? `${s.name} (you)` : s.kind === 'open' ? 'open seat' : s.name, s.team ? ` · Team ${s.team}` : ''))));
     if (msg.you < 0) statusEl.textContent += ' All seats are taken; you will watch.';
   } else if (msg.t === 'kicked') {
     if (statusEl) statusEl.textContent = 'The host gave your seat to someone else.';

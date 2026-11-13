@@ -88,6 +88,13 @@ h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spa
 .seat { display: grid; grid-template-columns: auto 70px 1fr; gap: 8px; align-items: center; background: var(--panel2); border-left: 4px solid var(--c); border-radius: 6px; padding: 6px 8px; }
 .seat .who { grid-column: 2 / -1; color: var(--muted); font-size: 13px; }
 .seat.me { outline: 2px solid var(--accent); }
+.opts { display: flex; flex-direction: column; gap: 6px; }
+.opt { display: flex; align-items: flex-start; gap: 8px; background: var(--panel2); border-radius: 6px; padding: 6px 8px; cursor: pointer; }
+.opt input[type=checkbox] { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
+.opt span { display: flex; flex-direction: column; flex: 1; }
+.opt small { color: var(--muted); font-size: 12px; }
+.opt select { flex: none; }
+.seat .who select.team { margin-left: 8px; padding: 2px 4px; font-size: 12px; }
 .room .code { font: 40px kenney-mono, monospace; letter-spacing: .15em; color: var(--accent); }
 .room input { flex: 1; }
 .joinbox { margin: 32px auto; width: min(420px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 12px; }
@@ -133,6 +140,16 @@ h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spa
 .banner { position: absolute; left: 0; right: 0; top: 38%; z-index: 4; pointer-events: none; text-align: center; background: linear-gradient(90deg, transparent, #000c 20%, #000c 80%, transparent); padding: 10px; animation: slide 1.3s ease both; font-size: 20px; }
 .banner .big { font-size: 34px; color: #fff; }
 @keyframes slide { 0% { opacity: 0; transform: translateX(-40px); } 15%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(40px); } }
+.hud .weather { font-size: 13px; padding: 3px 8px; border-radius: 6px; background: #0004; color: #bfe4ff; }
+.hud .weather[data-w=rain] { color: #8ec5ff; } .hud .weather[data-w=snow] { color: #fff; background: #ffffff22; }
+button.power { font-family: kenney-mono, monospace; }
+button.power.ready { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px -2px var(--accent); animation: glow 1.2s ease-in-out infinite alternate; }
+@keyframes glow { to { box-shadow: 0 0 18px 0 var(--accent); } }
+.chip .tag.team { color: var(--text); } .chip .tag.pow { color: var(--accent); }
+.power-row { grid-template-columns: 1fr auto; }
+.power-row span { display: flex; flex-direction: column; } .power-row small { font-size: 11px; }
+.curtain { position: absolute; inset: 0; z-index: 8; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center; }
+.curtain .big { font-size: 32px; }
 .toast { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 6; background: #4a2228; border: 2px solid var(--bad); padding: 8px 14px; border-radius: 6px; }
 
 /* editor */

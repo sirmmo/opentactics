@@ -118,6 +118,20 @@ export function unitTile(rules, kind, player) {
 export function drawUnit(ctx, rules, kind, player, dx, dy, size, dark = false) {
   const flip = !!rules.factions[player]?.view?.flip;
   drawTile(ctx, unitTile(rules, kind, player), dx, dy, size, { flip, dark, paint: paintFor(rules, player) });
+  // Units that share a picture with another carry a letter (view.mark).
+  const mark = rules.units[kind].view?.mark;
+  if (mark) {
+    const s = Math.max(6, Math.round(size * 0.36));
+    ctx.save();
+    ctx.fillStyle = '#1b1a26';
+    ctx.fillRect(dx, dy, s, s);
+    ctx.fillStyle = factionColor(rules, player);
+    ctx.font = `${Math.round(s * 0.95)}px kenney-mono, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(mark, dx + s / 2, dy + s / 2 + 1);
+    ctx.restore();
+  }
 }
 
 /** Turn a map document into the board the drawing code uses. Throws on unknown glyphs. */
