@@ -7,6 +7,44 @@ import { Editor } from './editor.js';
 import * as net from './net.js';
 
 const app = $('#app');
+
+// ---- installing as an app ------------------------------------------------
+
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+  navigator.serviceWorker.register('sw.js').catch(e => console.warn('No offline support:', e));
+}
+const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+// iPhones and iPads have no install prompt; Safari's Share menu does it instead.
+const appleDevice = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  $('.install-slot')?.replaceChildren(installButton());
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  $('.install-slot')?.replaceChildren();
+});
+
+function installButton() {
+  if (installed()) return '';
+  if (installPrompt) {
+    return h('button', {
+      class: 'install', onclick: async () => {
+        const p = installPrompt;
+        installPrompt = null;
+        await p.prompt();
+        await p.userChoice.catch(() => {});
+        $('.install-slot')?.replaceChildren(installButton());
+      },
+    }, '⤓ Install the app', h('small', {}, 'Full screen, home-screen icon, plays offline against the computer'));
+  }
+  if (appleDevice) {
+    return h('p', { class: 'install-hint' }, 'To install: tap ', h('b', {}, 'Share'), ' then ', h('b', {}, 'Add to Home Screen'), '.');
+  }
+  return '';
+}
 let engine;
 let match = null;
 let editor = null;
@@ -101,6 +139,7 @@ function menu() {
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
       h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw, test and share maps')),
     ),
+    h('div', { class: 'install-slot' }, installButton()),
     h('footer', {}, 'Art and sounds by Kenney (CC0). Online play goes browser to browser over WebRTC.'),
   ));
 }

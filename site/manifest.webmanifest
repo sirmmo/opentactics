@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "OpenTactics",
+  "short_name": "OpenTactics",
+  "description": "Turn-based tactical skirmish on a grid. Play the computer, take turns on one screen, or play friends browser to browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1b1a26",
+  "theme_color": "#262536",
+  "categories": ["games", "strategy"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

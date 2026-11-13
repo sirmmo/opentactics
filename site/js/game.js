@@ -55,6 +55,8 @@ export class Match {
     window.__match = this; // handy in the console
     this.setState(o.state);
     this.fit();
+    const first = this.seats[this.view.turn]?.local ? this.view.turn : this.seats.findIndex(x => x?.local);
+    if (first >= 0) requestAnimationFrame(() => this.focusPlayer(first, false));
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
     this.banner(`Day ${this.view.day}`, this.playerName(this.view.turn), factionColor(this.rules, this.view.turn));
@@ -126,6 +128,22 @@ export class Match {
     const fitScale = Math.floor(Math.min(box.width / (this.view.width * T), box.height / (this.view.height * T)));
     if (!this.zoomed) this.scale = Math.max(2, Math.min(5, fitScale || 2));
     this.resize();
+  }
+
+  /** Scroll the board to a player's headquarters (or their first unit) on big maps. */
+  focusPlayer(p, smooth = true) {
+    const s = this.view;
+    let at = null;
+    for (let i = 0; i < s.terrain.length && !at; i++) {
+      if (s.owner[i] === p && this.rules.terrains[s.terrain[i]].hq) at = { x: i % s.width, y: Math.floor(i / s.width) };
+    }
+    const u = s.units.find(x => x.player === p);
+    at ||= u && { x: u.x, y: u.y };
+    if (!at) return;
+    const size = T * this.scale, sc = this.scroller;
+    const left = this.canvas.offsetLeft + (at.x + 0.5) * size - sc.clientWidth / 2;
+    const top = this.canvas.offsetTop + (at.y + 0.5) * size - sc.clientHeight / 2;
+    sc.scrollTo({ left, top, behavior: smooth ? 'smooth' : 'auto' });
   }
 
   zoom(d) {
@@ -370,6 +388,7 @@ export class Match {
           s.day = ev.day;
           this.updateHud();
           sound.play('turn');
+          if (this.seats[ev.player]?.local) this.focusPlayer(ev.player);
           this.banner(`Day ${ev.day}`, this.playerName(ev.player), factionColor(this.rules, ev.player));
           this.say(`Day ${ev.day}: ${this.playerName(ev.player)} (+${ev.income})`, ev.player);
           break;
@@ -605,7 +624,9 @@ export class Match {
     if (!parts.length) {
       const s = this.view;
       const tip = s.over ? 'The game is over.'
-        : this.myTurn() ? 'Your turn. Pick a unit, or a factory you own to build. Right-click or Esc cancels; E ends the turn.'
+        : this.myTurn() ? (matchMedia('(pointer: coarse)').matches
+          ? 'Your turn. Tap a unit, or a factory you own to build. Tap outside the highlighted tiles to cancel.'
+          : 'Your turn. Pick a unit, or a factory you own to build. Right-click or Esc cancels; E ends the turn.')
         : this.pending ? 'Sending…' : `Waiting for ${this.playerName(s.turn)}.`;
       parts.push(h('p', { class: 'muted' }, tip));
     }

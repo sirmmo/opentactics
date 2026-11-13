@@ -13,6 +13,9 @@ shape; they set the ground and the starting positions, not the rules.
 - **Play** against the computer, take turns on one screen, or **online, browser to
   browser** (WebRTC). No game server is involved.
 - **Map editor** with free (or optionally mirrored) painting, validation, save/download, publish, and test play.
+- **Installable app**: on phones and desktops, install it from the menu (or Share →
+  Add to Home Screen on iPhone/iPad). It runs full screen and plays offline against
+  the computer; `site/sw.js` caches the game and every bundled map.
 - **Remote maps**: play on any map hosted at a URL (`?map=https://…/map.json`); maps
   added by URL stay in your map list.
 

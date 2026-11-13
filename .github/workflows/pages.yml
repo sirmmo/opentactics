@@ -30,6 +30,7 @@ jobs:
           cargo build --profile wasm --target wasm32-unknown-unknown -p opentactics-client
           cp target/wasm32-unknown-unknown/wasm/opentactics.wasm site/opentactics.wasm
           touch site/.nojekyll
+          sed -i "s/__BUILD__/${GITHUB_SHA::12}/" site/sw.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

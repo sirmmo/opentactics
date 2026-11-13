@@ -2,10 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>OpenTactics</title>
 <meta name="description" content="A turn-based tactical skirmish game in the browser. Play the computer, take turns on one screen, or play friends browser to browser.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23e8594f'/%3E%3Cpath d='M4 12V4h2v3h4V4h2v8h-2V9H6v3z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#262536">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="OpenTactics">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 @font-face { font-family: kenney; src: url(assets/kenney-mini.ttf); }
 @font-face { font-family: kenney-mono; src: url(assets/kenney-mini-square-mono.ttf); }
@@ -17,7 +24,9 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 kenney, system-ui, sans-serif; }
 body { overflow: hidden; }
-#app { height: 100%; display: flex; flex-direction: column; }
+#app { height: 100%; display: flex; flex-direction: column;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+html { -webkit-tap-highlight-color: transparent; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button {
   background: var(--panel2); border: 2px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer;
@@ -50,6 +59,11 @@ h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spa
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .choices button.big { text-align: left; padding: 16px; font-size: 20px; display: flex; flex-direction: column; gap: 4px; }
 .choices button.big small { font-size: 13px; opacity: .75; }
+.install-slot:empty { display: none; }
+.install-slot button.install { width: 100%; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px; text-align: left; border-style: dashed; }
+.install-slot button.install small { color: var(--muted); font-size: 13px; }
+.install-hint { margin: 0; color: var(--muted); }
+.install-hint b { color: var(--text); font-weight: normal; }
 .menu-screen footer { color: var(--muted); font-size: 12px; }
 
 /* bars */
@@ -92,8 +106,8 @@ h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spa
 .chip .tag { background: #0004; padding: 0 4px; border-radius: 3px; }
 .field { flex: 1; display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
 .stage { position: relative; min-width: 0; min-height: 0; background: #12111b; }
-.scroller { position: absolute; inset: 0; overflow: auto; display: grid; place-items: center; padding: 8px; }
-.board { image-rendering: pixelated; cursor: pointer; touch-action: manipulation; box-shadow: 0 0 0 2px #000, 0 8px 30px #000a; }
+.scroller { position: absolute; inset: 0; overflow: auto; display: flex; padding: 8px; }
+.board { margin: auto; flex: none; image-rendering: pixelated; cursor: pointer; touch-action: manipulation; box-shadow: 0 0 0 2px #000, 0 8px 30px #000a; }
 .side { background: var(--panel); border-left: 2px solid var(--line); padding: 8px 12px 12px; overflow: auto; display: flex; flex-direction: column; }
 .side .net { font-size: 12px; color: var(--muted); background: #0003; padding: 6px 8px; border-radius: 6px; margin-bottom: 4px; }
 .info { min-height: 120px; display: flex; flex-direction: column; gap: 8px; }
