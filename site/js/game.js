@@ -121,6 +121,8 @@ export class Match {
     this.weatherEl = h('div', { class: 'weather hidden' });
     this.powerBtn = h('button', { class: 'power hidden', onclick: () => this.openPowers(), title: 'Powers' });
     this.modeEl = h('div', { class: 'mode hidden' });
+    this.nextBtn = h('button', { onclick: () => this.nextUnit(), title: 'Next unit that has not moved (N)' }, 'Next unit');
+    this.minimap = h('canvas', { class: 'minimap hidden', title: 'Map overview: click or drag to look around' });
     this.diploBtn = h('button', { class: 'hidden', onclick: () => this.openDiplomacy(), title: 'Alliances and truces' }, 'Diplomacy');
     this.curtain = h('div', { class: 'curtain hidden' });
     this.clockEl = h('div', { class: 'clock hidden', title: 'Time left for this turn' });
@@ -150,9 +152,9 @@ export class Match {
     const zoomIn = h('button', { class: 'icon', title: 'Zoom in', onclick: () => this.zoom(1) }, '+');
     const zoomOut = h('button', { class: 'icon', title: 'Zoom out', onclick: () => this.zoom(-1) }, '−');
     this.root.replaceChildren(
-      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.diploBtn, this.powerBtn, this.endBtn),
+      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.nextBtn, this.diploBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
-        h('div', { class: 'stage' }, this.scroller, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
+        h('div', { class: 'stage' }, this.scroller, this.minimap, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
         h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, this.chatEl, h('h3', {}, 'Log'), this.logEl)),
     );
     this.ctx = this.canvas.getContext('2d');
@@ -163,17 +165,75 @@ export class Match {
       const x = Math.floor((e.clientX - b.left) / size), y = Math.floor((e.clientY - b.top) / size);
       return x >= 0 && y >= 0 && x < this.view.width && y < this.view.height ? { x, y } : null;
     };
+    // Dragging with the mouse pans the board; two fingers pinch to zoom.
+    const touches = new Map();
+    let drag = null, pinch = null;
+    this.canvas.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, [e.clientX, e.clientY]);
+        if (touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: this.scale };
+        }
+      } else if (e.button === 0) {
+        drag = { x: e.clientX, y: e.clientY, left: this.scroller.scrollLeft, top: this.scroller.scrollTop, moved: false };
+      }
+    });
     this.canvas.addEventListener('pointermove', e => {
+      if (touches.has(e.pointerId)) {
+        touches.set(e.pointerId, [e.clientX, e.clientY]);
+        if (pinch && touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+          const target = Math.max(1, Math.min(6, Math.round(pinch.scale * d / pinch.d)));
+          if (target !== this.scale) this.zoomTo(target, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+          this.dragged = true;
+        }
+      }
+      if (drag && (e.buttons & 1)) {
+        const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (drag.moved || Math.hypot(dx, dy) > 6) {
+          drag.moved = true;
+          this.dragged = true;
+          this.scroller.scrollLeft = drag.left - dx;
+          this.scroller.scrollTop = drag.top - dy;
+        }
+      }
       const t = tileAt(e);
       if (key(t?.x, t?.y) !== key(this.hover?.x, this.hover?.y)) { this.hover = t; this.onHover(); }
     });
-    this.canvas.addEventListener('pointerleave', () => { this.hover = null; this.onHover(); });
-    this.canvas.addEventListener('click', e => { const t = tileAt(e); if (t) this.onClick(t.x, t.y); });
+    const lift = e => {
+      touches.delete(e.pointerId);
+      if (touches.size < 2) pinch = null;
+      drag = null;
+    };
+    this.canvas.addEventListener('pointerup', lift);
+    this.canvas.addEventListener('pointercancel', lift);
+    this.canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') { drag = null; this.hover = null; this.onHover(); } });
+    this.canvas.addEventListener('click', e => {
+      if (this.dragged) { this.dragged = false; return; }
+      const t = tileAt(e);
+      if (t) this.onClick(t.x, t.y);
+    });
+    this.scroller.addEventListener('wheel', e => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      this.zoomTo(Math.max(1, Math.min(6, this.scale + (e.deltaY < 0 ? 1 : -1))), e.clientX, e.clientY);
+    }, { passive: false });
+    // The minimap: click or drag to look somewhere else.
+    const look = e => {
+      const b = this.minimap.getBoundingClientRect();
+      const x = (e.clientX - b.left) / b.width * this.view.width, y = (e.clientY - b.top) / b.height * this.view.height;
+      this.scrollToTile(x - 0.5, y - 0.5, false);
+    };
+    this.minimap.addEventListener('pointerdown', e => { this.minimap.setPointerCapture(e.pointerId); look(e); });
+    this.minimap.addEventListener('pointermove', e => { if (e.buttons & 1) look(e); });
     this.canvas.addEventListener('contextmenu', e => { e.preventDefault(); this.cancel(); });
     this.onKey = e => {
       if (e.target.closest?.('input, textarea, select')) return;
       if (e.key === 'Escape') this.cancel();
       if (e.key === 'e' || e.key === 'E') this.endTurn();
+      if (e.key === 'n' || e.key === 'N') this.nextUnit();
     };
     window.addEventListener('keydown', this.onKey);
     this.onResize = () => this.fit();
@@ -198,16 +258,51 @@ export class Match {
     const u = s.units.find(x => x.player === p);
     at ||= u && { x: u.x, y: u.y };
     if (!at) return;
-    const size = T * this.scale, sc = this.scroller;
-    const left = this.canvas.offsetLeft + (at.x + 0.5) * size - sc.clientWidth / 2;
-    const top = this.canvas.offsetTop + (at.y + 0.5) * size - sc.clientHeight / 2;
-    sc.scrollTo({ left, top, behavior: smooth ? 'smooth' : 'auto' });
+    this.scrollToTile(at.x, at.y, smooth);
   }
 
   zoom(d) {
+    const sc = this.scroller.getBoundingClientRect();
+    this.zoomTo(Math.max(1, Math.min(6, this.scale + d)), sc.left + sc.width / 2, sc.top + sc.height / 2);
+  }
+
+  /** Change the zoom keeping the point under (cx, cy) (screen coordinates) still. */
+  zoomTo(scale, cx, cy) {
+    if (scale === this.scale) return;
+    const b = this.canvas.getBoundingClientRect();
+    const tx = (cx - b.left) / (T * this.scale), ty = (cy - b.top) / (T * this.scale);
     this.zoomed = true;
-    this.scale = Math.max(1, Math.min(6, this.scale + d));
+    this.scale = scale;
     this.resize();
+    const nb = this.canvas.getBoundingClientRect();
+    this.scroller.scrollLeft += nb.left + tx * T * scale - cx;
+    this.scroller.scrollTop += nb.top + ty * T * scale - cy;
+  }
+
+  /** Bring tile (x, y) to the middle of the view. */
+  scrollToTile(x, y, smooth = true) {
+    const size = T * this.scale, sc = this.scroller;
+    const left = this.canvas.offsetLeft + (x + 0.5) * size - sc.clientWidth / 2;
+    const top = this.canvas.offsetTop + (y + 0.5) * size - sc.clientHeight / 2;
+    sc.scrollTo({ left, top, behavior: smooth ? 'smooth' : 'auto' });
+  }
+
+  /** Units the acting player has not moved yet. */
+  idleUnits() {
+    const me = this.acting();
+    return me == null ? [] : this.view.units.filter(u => u.player === me && !u.moved);
+  }
+
+  /** Select the next unit that has not moved, and bring it into view. */
+  nextUnit() {
+    if (!this.myTurn()) return;
+    const idle = this.idleUnits();
+    if (!idle.length) return this.toast('Every unit has moved.');
+    this.idleIndex = ((this.idleIndex ?? -1) + 1) % idle.length;
+    const u = idle[this.idleIndex];
+    this.menuEl.classList.add('hidden');
+    this.scrollToTile(u.x, u.y);
+    this.select(u);
   }
 
   resize() {
@@ -278,7 +373,10 @@ export class Match {
 
   myTurn() {
     const s = this.view;
-    return !s.over && !this.busy && !this.pending && this.queue.length === 0 && this.acting() != null;
+    // Other players' moves may still be animating: with simultaneous turns nobody
+    // in the group can touch our units, so we can go on. Only our own moves wait.
+    return !s.over && !this.pending && !this.ownBusy && !this.queue.some(q => q.meta.local) && this.acting() != null
+      && (!this.busy || this.active().length > 1);
   }
 
   unitAt(x, y) { return this.view.units.find(u => u.x === x && u.y === y); }
@@ -401,6 +499,7 @@ export class Match {
     this.updateHud();
     while (this.queue.length && this.alive) {
       const { player, action, meta } = this.queue.shift();
+      this.ownBusy = !!meta.local;
       let res;
       try {
         res = this.engine.call({ op: 'act', player, action });
@@ -420,6 +519,7 @@ export class Match {
       this.setState(this.seen(res.state), res.income);
     }
     this.busy = false;
+    this.ownBusy = false;
     this.instantNow = false;
     this.afterIdle();
   }
@@ -563,7 +663,19 @@ export class Match {
   }
 
   endTurn() {
-    if (this.myTurn()) this.submit({ type: 'end_turn' });
+    if (!this.myTurn()) return;
+    const idle = this.idleUnits().length;
+    let ask = true;
+    try { ask = localStorage.getItem('ot.warnIdle') !== 'no'; } catch { /* ask */ }
+    if (!idle || !ask) return this.submit({ type: 'end_turn' });
+    const never = h('input', { type: 'checkbox' });
+    const remember = () => { if (never.checked) try { localStorage.setItem('ot.warnIdle', 'no'); } catch { /* ignore */ } };
+    fill(this.menuEl,
+      h('div', { class: 'title' }, `${idle} unit${idle === 1 ? ' has' : 's have'} not moved`),
+      h('button', { class: 'primary', onclick: () => { remember(); this.menuEl.classList.add('hidden'); this.submit({ type: 'end_turn' }); } }, 'End turn anyway'),
+      h('button', { onclick: () => { remember(); this.menuEl.classList.add('hidden'); this.nextUnit(); } }, 'Show me'),
+      h('label', { class: 'small muted' }, never, " Don't ask again"));
+    this.menuEl.classList.remove('hidden');
   }
 
   // ---- animation ---------------------------------------------------------
@@ -1250,6 +1362,7 @@ export class Match {
   loop(now) {
     if (!this.alive) return;
     this.draw(now);
+    if (!this.lastMini || now - this.lastMini > 200) { this.lastMini = now; this.drawMinimap(); }
     requestAnimationFrame(this.loop);
   }
 
@@ -1465,6 +1578,48 @@ export class Match {
       }
     }
     ctx.restore();
+  }
+
+  /** A small overview of the whole map: terrain, property, units, and the view. */
+  drawMinimap() {
+    const s = this.view, sc = this.scroller, mm = this.minimap;
+    const big = this.canvas.width > sc.clientWidth + 4 || this.canvas.height > sc.clientHeight + 4;
+    mm.classList.toggle('hidden', !big);
+    if (!big) return;
+    const px = Math.max(2, Math.floor(150 / Math.max(s.width, s.height)));
+    if (mm.width !== s.width * px || mm.height !== s.height * px) { mm.width = s.width * px; mm.height = s.height * px; this.miniBase = null; }
+    const ctx = mm.getContext('2d');
+    const ownerKey = s.owner.join();
+    if (!this.miniBase || this.miniOwners !== ownerKey) {
+      this.miniOwners = ownerKey;
+      const base = document.createElement('canvas');
+      base.width = mm.width; base.height = mm.height;
+      const b = base.getContext('2d');
+      for (let y = 0; y < s.height; y++) for (let x = 0; x < s.width; x++) {
+        const i = y * s.width + x, t = this.rules.terrains[s.terrain[i]], v = t.view || {};
+        b.fillStyle = t.capturable ? (s.owner[i] >= 0 ? factionColor(this.rules, s.owner[i]) : '#d6d6de')
+          : v.reef ? '#3f93c4' : v.base === 'water' ? '#5cc0ec' : v.base === 'sand' ? '#e7d396'
+          : v.auto ? '#8f8fa0' : t.id === 'mountain' ? '#a07c58' : t.id === 'forest' ? '#3f8a45' : '#7fca62';
+        b.fillRect(x * px, y * px, px, px);
+      }
+      this.miniBase = base;
+    }
+    ctx.drawImage(this.miniBase, 0, 0);
+    if (this.hidden.size) {
+      ctx.fillStyle = 'rgba(10,10,24,0.45)';
+      for (const i of this.hidden) ctx.fillRect((i % s.width) * px, Math.floor(i / s.width) * px, px, px);
+    }
+    for (const u of s.units) {
+      ctx.fillStyle = '#111';
+      ctx.fillRect(u.x * px - 1, u.y * px - 1, px + 2, px + 2);
+      ctx.fillStyle = factionColor(this.rules, u.player);
+      ctx.fillRect(u.x * px, u.y * px, px, px);
+    }
+    const size = T * this.scale;
+    const vx = (sc.scrollLeft - this.canvas.offsetLeft) / size, vy = (sc.scrollTop - this.canvas.offsetTop) / size;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(vx * px, vy * px, sc.clientWidth / size * px, sc.clientHeight / size * px);
   }
 
   drawPath(path, color) {
