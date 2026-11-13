@@ -799,15 +799,16 @@ async function setup(mode, preset = {}) {
     const teamed = cfg.seats.some(st => st.team != null);
     const teams = teamed ? cfg.seats.map((st, i) => st.team ?? 100 + i) : [];
     if (teamed && new Set(teams).size < 2) return showError(new Error('Everyone is on one team: there would be nobody to fight.'));
+    // (`mode` is the setup screen's "local" or "host"; the game mode is `gameMode`.)
     const { mode: modeName, ...rest } = cfg.options;
-    let mode = { type: modeName || 'standard' };
+    const gameMode = { type: modeName || 'standard' };
     if (modeName === 'survival') {
       const invaders = cfg.seats.map((st, i) => (st.kind === 'ai' ? i : -1)).filter(i => i >= 0);
       if (!invaders.length || invaders.length === cfg.seats.length) return showError(new Error('Survival needs at least one computer seat (the invaders) and one person.'));
-      mode.invaders = invaders;
+      gameMode.invaders = invaders;
     }
     if (modeName === 'survival' && teamed) return showError(new Error('Survival makes its own teams: clear the team choices.'));
-    const options = { ...rest, mode, teams };
+    const options = { ...rest, mode: gameMode, teams };
     let res;
     try {
       res = resume
