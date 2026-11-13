@@ -1,0 +1,12 @@
+[workspace]
+members = ["crates/core", "crates/client", "crates/server"]
+resolver = "2"
+
+# cargo build --profile wasm --target wasm32-unknown-unknown -p opentactics-client
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

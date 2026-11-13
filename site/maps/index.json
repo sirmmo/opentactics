@@ -1,0 +1,26 @@
+[
+ {
+  "id": "first-contact",
+  "name": "First Contact",
+  "description": "A small two-player duel over a river.",
+  "width": 16,
+  "height": 12,
+  "players": 2
+ },
+ {
+  "id": "river-line",
+  "name": "River Line",
+  "description": "Two bridges, one airfield each. Hold the crossings.",
+  "width": 22,
+  "height": 17,
+  "players": 2
+ },
+ {
+  "id": "four-corners",
+  "name": "Four Corners",
+  "description": "Four armies on an island, with ports and airfields. Two to four players.",
+  "width": 24,
+  "height": 24,
+  "players": 4
+ }
+]

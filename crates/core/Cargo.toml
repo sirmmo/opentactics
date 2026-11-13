@@ -1,0 +1,9 @@
+[package]
+name = "opentactics-core"
+version = "0.1.0"
+edition = "2021"
+description = "Rules engine and AI for OpenTactics, a turn-based tactical skirmish game"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
