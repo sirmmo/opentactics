@@ -366,7 +366,7 @@ export class Match {
     if (!this.alive || this.busy || this.queue.length || this.view.over || !this.seats[this.view.turn]?.ai) return;
     let action;
     try {
-      action = this.engine.call({ op: 'ai' }).action;
+      action = this.engine.call({ op: 'ai', profile: this.seats[this.view.turn]?.profile }).action;
     } catch (e) {
       action = { type: 'end_turn' };
     }

@@ -437,3 +437,69 @@ fn missions_are_won_and_lost_by_their_goals() {
     assert!(lost.s.over);
     assert_eq!(lost.s.winner, Some(1));
 }
+
+use opentactics_core::ai::{next_action_with, Level, Profile, Style};
+
+/// Play a whole game with a profile per seat; returns the winner.
+fn duel_profiles(text: &str, profiles: &[Profile], options: Options, seed: u64) -> Option<usize> {
+    let mut r = rules();
+    r.victory.day_limit = 60;
+    let mut g = Game::with_setup(r, &map(text), seed, Setup { options }).unwrap();
+    let mut steps = 0;
+    while !g.s.over {
+        let p = g.s.turn;
+        let action = next_action_with(&g, &profiles[p % profiles.len()]);
+        g.apply(p, &action).unwrap_or_else(|e| panic!("AI ({:?}) tried {action:?}: {e}", profiles[p % profiles.len()]));
+        steps += 1;
+        assert!(steps < 200_000, "the AI never ends its turn");
+    }
+    g.s.winner
+}
+
+#[test]
+fn hard_beats_easy_and_every_style_plays() {
+    let maps = bundled_maps();
+    let two: Vec<&(String, String)> = maps.iter().filter(|(_, t)| map(t).players == 2).collect();
+    let hard = Profile { level: Level::Hard, style: Style::Balanced };
+    let easy = Profile { level: Level::Easy, style: Style::Balanced };
+    let mut hard_wins = 0;
+    let mut games = 0;
+    for (name, text) in &two {
+        for (seed, seats) in [(1, [hard, easy]), (2, [easy, hard])] {
+            let w = duel_profiles(text, &seats, Options::default(), seed);
+            games += 1;
+            if w.is_some_and(|w| seats[w] == hard) {
+                hard_wins += 1;
+            }
+            println!("{name}: {:?} wins", w.map(|w| seats[w].level));
+        }
+    }
+    assert!(hard_wins * 3 >= games * 2, "hard won only {hard_wins} of {games}");
+    // Every style finishes games, with every option on.
+    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![] };
+    for style in [Style::Rusher, Style::Turtle, Style::Economist] {
+        let p = Profile { level: Level::Normal, style };
+        for (_, text) in two.iter().take(3) {
+            duel_profiles(text, &[p, hard], all.clone(), 5);
+        }
+    }
+}
+
+#[test]
+#[ignore]
+fn measure_hard_vs_normal() {
+    let maps = bundled_maps();
+    let hard = Profile { level: Level::Hard, style: Style::Balanced };
+    let normal = Profile::default();
+    let (mut h, mut n, mut d) = (0, 0, 0);
+    for (_, text) in maps.iter().filter(|(_, t)| map(t).players == 2) {
+        for (seed, seats) in [(1, [hard, normal]), (2, [normal, hard]), (3, [hard, normal]), (4, [normal, hard])] {
+            match duel_profiles(text, &seats, Options::default(), seed) {
+                Some(w) if seats[w] == hard => h += 1,
+                Some(_) => n += 1,
+                None => d += 1,
+            }
+        }
+    }
+    println!("hard {h} normal {n} draw {d}");
+}

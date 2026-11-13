@@ -41,7 +41,10 @@ enum Request {
     Builds { x: i32, y: i32 },
     Act { player: usize, action: Action },
     /// Ask the computer for the current player's next action.
-    Ai,
+    Ai {
+        #[serde(default)]
+        profile: Option<ai::Profile>,
+    },
 }
 
 fn with_game<T>(f: impl FnOnce(&mut Game) -> Result<T, String>) -> Result<T, String> {
@@ -180,11 +183,11 @@ fn handle(text: &str) -> Result<Value, String> {
             out["events"] = json!(events);
             Ok(out)
         }),
-        Request::Ai => with_game(|g| {
+        Request::Ai { profile } => with_game(|g| {
             if g.s.over {
                 return Err("The game is over.".into());
             }
-            Ok(json!({ "action": ai::next_action(g) }))
+            Ok(json!({ "action": ai::next_action_with(g, &profile.unwrap_or_default()) }))
         }),
     }
 }

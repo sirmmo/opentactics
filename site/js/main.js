@@ -408,12 +408,19 @@ async function setup(mode, preset = {}) {
         sendLobby();
       };
       const who = seat.kind === 'peer' ? `${seat.name}${seat.conn?.open ? '' : ' (gone)'}` : seat.kind === 'open' ? 'waiting…' : seat.kind === 'ai' ? 'Computer' : seat.name || 'You';
+      // How the computer plays this seat.
+      seat.profile ||= { level: 'normal', style: 'balanced' };
+      const brain = seat.kind === 'ai' ? h('span', { class: 'brain' },
+        h('select', { title: 'Skill', onchange: e => { seat.profile.level = e.target.value; } },
+          ...[['easy', 'Easy'], ['normal', 'Normal'], ['hard', 'Hard']].map(([v, l]) => h('option', { value: v, selected: seat.profile.level === v }, l))),
+        h('select', { title: 'Style', onchange: e => { seat.profile.style = e.target.value; } },
+          ...[['balanced', 'Balanced'], ['rusher', 'Rusher'], ['turtle', 'Turtle'], ['economist', 'Economist']].map(([v, l]) => h('option', { value: v, selected: seat.profile.style === v }, l)))) : null;
       // Teams only make sense with three or more seats.
       const team = cfg.seats.length > 2 && !cfg.map.mission ? h('select', { class: 'team', title: 'Team', onchange: e => { seat.team = e.target.value === '' ? null : +e.target.value; sendLobby(); } },
         h('option', { value: '', selected: seat.team == null }, 'No team'),
         ...[1, 2, 3, 4].slice(0, Math.floor(cfg.seats.length / 2) + (cfg.seats.length > 4 ? 1 : 0)).map(t => h('option', { value: t, selected: seat.team === t }, `Team ${t}`))) : null;
       return h('div', { class: 'seat', style: `--c:${factionColor(cfg.rules, i)}` },
-        h('span', { class: 'dot' }), h('b', {}, cfg.rules.factions[i].name), sel, h('span', { class: 'who' }, who, team));
+        h('span', { class: 'dot' }), h('b', {}, cfg.rules.factions[i].name), sel, h('span', { class: 'who' }, brain || who, team));
     }));
   }
 
@@ -537,7 +544,7 @@ async function setup(mode, preset = {}) {
       res = engine.call({ op: 'new', rules: cfg.rules, map: cfg.map, seed: Math.floor(Math.random() * 2 ** 31), setup: { options } });
     } catch (e) { return showError(e); }
     document.body.dataset.screen = 'play';
-    const seats = cfg.seats.map(s => ({ name: s.kind === 'ai' ? 'Computer' : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai' }));
+    const seats = cfg.seats.map(s => ({ name: s.kind === 'ai' ? 'Computer' : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai', profile: s.kind === 'ai' ? s.profile : undefined }));
     // In a local game with several humans, name them after their armies.
     seats.forEach((s, i) => { if (s.local && mode === 'local' && cfg.seats.filter(x => x.kind === 'local').length > 1) s.name = cfg.rules.factions[i].name; });
     const menuItems = [
