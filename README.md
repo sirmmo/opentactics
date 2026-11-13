@@ -12,6 +12,17 @@ shape; they set the ground and the starting positions, not the rules.
   conditions all come from one JSON file (`site/rules/*.json`).
 - **Play** against the computer, take turns on one screen, or **online, browser to
   browser** (WebRTC). No game server is involved.
+- **Optional rules, chosen at game start and the same for everyone**: fog of war, fuel
+  and ammunition, weather, powers, and teams (2v2, 3v3, 4v4 on the bigger maps).
+- **Sixteen units** including transports (carrier, airlift, lander) and a submarine
+  that dives; damaged units of the same kind can join.
+- **Computer opponents** at three skill levels (Easy, Normal, Hard) and four styles
+  (Balanced, Rusher, Turtle, Economist).
+- **Missions**: four tutorial missions and four challenges with their own goals.
+- **Replays and stats**: every game can be watched again, saved as a file or opened
+  from a link (`?replay=URL`); the end screen charts army, property and income by day.
+- **Online extras**: watchers, chat and emotes, a turn timer, rejoining after a dropout,
+  and resuming a hosted game after the host's page reloads.
 - **Map editor** with free (or optionally mirrored) painting, validation, save/download, publish, and test play.
 - **Installable app**: on phones and desktops, install it from the menu (or Share →
   Add to Home Screen on iPhone/iPad). It runs full screen and plays offline against
@@ -69,9 +80,13 @@ messages then travel directly over a WebRTC data channel:
 5. Every browser applies the action with its own engine and compares fingerprints.
    If they differ, it asks the host for a fresh copy.
 
-Guests who drop can rejoin and get their seat back. The host can hand an empty seat
-to the computer. Extra visitors watch. The host's browser is the referee, so it needs
-to stay open. Browsers behind very strict NATs may need a TURN server; PeerJS accepts
+Guests who drop keep retrying for about ten minutes and get their seat back, with the
+whole move record. The host can hand an empty seat to the computer. Visitors can join
+just to watch, and everyone can chat. The host can set a turn timer and ends turns that
+run out. The host's browser is the referee and keeps the game in local storage: if it
+reloads, **Resume hosting** on the main menu reopens the same room. With fog of war,
+each browser only shows its own side, but every browser holds the whole game, so fog is
+an honour system online. Browsers behind very strict NATs may need a TURN server; PeerJS accepts
 one in its config.
 
 ## Rule sets
@@ -88,7 +103,14 @@ numbers: start money, no luck, a 15-day limit. Fields:
 | `victory` | `hq_capture`, `rout`, `day_limit` | win conditions; with a day limit, most properties wins |
 | `factions[]` | `name`, `view.row/color/flip`, optional `view.recolor{from,to,light}` | one per seat, up to 8; `row` picks the colour row in the tile sheet (five colours), `recolor` turns the hue `from` into hue `to` in the browser to make more. Nothing else is allowed: no per-army bonuses |
 | `terrains[]` | `id`, `glyph`, `defense`, `move_cost{type: cost}`, `capturable`, `hq`, `income`, `builds[]`, `repairs[]`, `view` | a missing movement type cannot enter |
-| `units[]` | `id`, `class`, `move_type`, `moves`, `cost`, `range[min,max]`, `can_capture`, `flying`, `damage{unit: %}`, `view.tile` | range over 1 means it cannot move and fire in one turn |
+| `units[]` | `id`, `class`, `move_type`, `moves`, `cost`, `range[min,max]`, `can_capture`, `flying`, `damage{unit: %}`, `view.tile`, `view.mark` | range over 1 means it cannot move and fire in one turn; `mark` is a letter for units that share a picture |
+| | `vision` | tiles seen with fog of war (default 2) |
+| | `carry[]`, `capacity`, `supplies` | unit ids it can carry and how many; refills neighbours |
+| | `fuel`, `fuel_per_day`, `ammo` | with supply rules: fuel per movement point, burnt daily (lost at 0), rounds |
+| | `can_dive`, `dive_fuel`, `detects_dived` | diving hides a unit from enemies not next to it; only detectors hit it |
+| `terrains[]` | `hides`, `vision_bonus{type: n}` | with fog: units here seen only from next door; extra sight |
+| `weather[]` | `id`, `name`, `chance`, `move_extra{type: n}`, `vision` | the first is clear skies |
+| `powers[]` | `id`, `name`, `charge`, `effects[]` | effects: `attack`/`defense` (percent), `move`/`vision` (tiles), `heal` (hp), `funds`, `resupply`; charge is the value of damage dealt, plus half of damage taken |
 
 Damage = (base + luck roll) × attacker health/10 × (100 − stars × defense_per_star ×
 defender health/10)%.
@@ -110,6 +132,15 @@ host it online), or use **Add map from URL** on the setup screen. The setup scre
 shows a shareable link for any map that lives at a URL. The host must allow
 cross-origin requests (GitHub raw files and Pages do). Published maps appear in
 everyone's map list.
+
+## Missions
+
+`site/missions` (built by `tools/make_missions.py`) holds maps with a `mission` block:
+`briefing`, `player` (the seat you play), `goals` (any one wins) and `fail` (any one
+loses) from `capture{x,y}`, `lose_tile{x,y}`, `day{day}`, `no_enemy_units`, `no_units`,
+`unit_gone{tag}`, `unit_at{tag,x,y}`; optional `options` (fog, supply…), `teams`,
+`hints[{day,text}]` and `ai.profile{level,style}`. Map units may carry a `tag`, `hp`,
+`fuel` and `ammo`.
 
 ## Licence
 

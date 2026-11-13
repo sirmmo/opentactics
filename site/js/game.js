@@ -13,6 +13,7 @@ import { snapshot, statsView } from './stats.js';
 const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const key = (x, y) => `${x},${y}`;
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -495,11 +496,24 @@ export class Match {
         case 'attack': {
           const a = unit(ev.attacker), d = unit(ev.defender);
           if (!d) break;
-          sound.play('attack');
-          if (a) this.effect({ kind: 'shot', from: [a.x, a.y], to: [d.x, d.y], dur: 220, color: factionColor(this.rules, a.player) });
-          await sleep(fast ? 150 : 220);
+          const ranged = a && (this.rules.units[a.kind].range?.[1] || 1) > 1;
+          const flying = a && this.rules.units[a.kind].flying;
+          if (a) {
+            const dir = [Math.sign(d.x - a.x), Math.sign(d.y - a.y)];
+            if (!ranged && !calm()) await this.lunge(a, dir, fast ? 140 : 200);
+            sound.play('attack');
+            this.effect({ kind: 'flash', at: [a.x, a.y], dir, dur: 140 });
+            const travel = ranged ? (fast ? 380 : 520) : (fast ? 150 : 200);
+            this.effect({ kind: ranged ? 'shell' : flying ? 'missile' : 'shot', from: [a.x, a.y], to: [d.x, d.y], dur: travel, color: factionColor(this.rules, a.player) });
+            await sleep(travel);
+          } else {
+            sound.play('attack');
+            await sleep(fast ? 120 : 180);
+          }
+          this.effect({ kind: 'impact', at: [d.x, d.y], dur: 320 });
+          if (ev.damage >= 45) this.shake(Math.min(1, ev.damage / 100), 260);
           this.anim.blink = d.id;
-          this.effect({ kind: 'text', at: [d.x, d.y], text: `-${ev.damage}%`, color: '#fff2a8', dur: 900 });
+          this.effect({ kind: 'text', at: [d.x, d.y], text: `-${ev.damage}%`, color: ev.damage >= 50 ? '#ffd27a' : '#fff2a8', big: ev.damage >= 50, dur: 900 });
           d.hp = ev.hp;
           if (a) a.moved = a.moved || !ev.counter;
           await sleep(fast ? 280 : 420);
@@ -589,13 +603,16 @@ export class Match {
           s.players[ev.player].charge = Math.max(0, (s.players[ev.player].charge || 0) - (pw?.charge || 0));
           this.updateHud();
           sound.play('win');
+          this.effect({ kind: 'screen', color: factionColor(this.rules, ev.player), dur: 700 });
           if (pw) { this.banner(pw.name, `${this.playerName(ev.player)} · ${pw.description || ''}`, factionColor(this.rules, ev.player)); this.say(`${this.playerName(ev.player)} uses ${pw.name}`, ev.player); }
           await sleep(fast ? 700 : 1100);
           break;
         }
         case 'destroy': {
           sound.play('destroy');
-          this.effect({ kind: 'boom', at: [ev.x, ev.y], dur: 600 });
+          this.effect({ kind: 'boom', at: [ev.x, ev.y], dur: 650 });
+          this.effect({ kind: 'smoke', at: [ev.x, ev.y], dur: 1400 });
+          this.shake(0.9, 380);
           const gone = unit(ev.unit);
           s.units = s.units.filter(u => u.id !== ev.unit);
           if (gone) this.say(`${this.unitName(gone)} destroyed`, gone.player);
@@ -630,7 +647,7 @@ export class Match {
           const u = unit(ev.unit);
           if (u) {
             u.hp = ev.hp;
-            this.effect({ kind: 'text', at: [u.x, u.y], text: '+', color: '#9dff9d', dur: 700 });
+            this.effect({ kind: 'sparkle', at: [u.x, u.y], dur: 800 });
           }
           break;
         }
@@ -658,6 +675,17 @@ export class Match {
 
   unitName(u) {
     return `${this.rules.factions[u.player]?.name ?? ''} ${this.rules.units[u.kind].name}`.trim();
+  }
+
+  /** A melee attacker jumps at its target and back. */
+  async lunge(u, dir, dur) {
+    this.anim.lunge = { id: u.id, dir, t0: performance.now(), dur };
+    await sleep(dur * 0.55);
+  }
+
+  shake(amp, dur) {
+    if (calm()) return;
+    this.anim.shake = { amp, dur, t0: performance.now() };
   }
 
   effect(fx) {
@@ -993,6 +1021,18 @@ export class Match {
   draw(now) {
     const ctx = this.ctx, s = this.view, r = this.rules, size = T * this.scale, ui = this.ui;
     ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    const sh = this.anim.shake;
+    if (sh) {
+      const t = (now - sh.t0) / sh.dur;
+      if (t >= 1) this.anim.shake = null;
+      else {
+        const m = sh.amp * this.scale * 2.5 * (1 - t);
+        ctx.fillStyle = '#12111b';
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.translate(Math.round(Math.sin(now * 0.09) * m), Math.round(Math.cos(now * 0.11) * m));
+      }
+    }
     ctx.drawImage(this.layer, 0, 0, s.width * size, s.height * size);
 
     const shade = (set, fill, stroke) => {
@@ -1036,7 +1076,13 @@ export class Match {
     for (const u of s.units) {
       if (this.anim.blink === u.id && Math.floor(now / 70) % 2) continue;
       const ghost = ui.mode === 'menu' || ui.mode === 'target' || ui.mode === 'drop' ? ui.unit?.id === u.id : false;
-      const x = ghost ? ui.dest.x : u.x, y = ghost ? ui.dest.y : u.y;
+      let x = ghost ? ui.dest.x : u.x, y = ghost ? ui.dest.y : u.y;
+      const lg = this.anim.lunge;
+      if (lg?.id === u.id) {
+        const t = (now - lg.t0) / lg.dur;
+        if (t >= 1) this.anim.lunge = null;
+        else { const k = Math.sin(Math.PI * t) * 0.3; x += lg.dir[0] * k; y += lg.dir[1] * k; }
+      }
       if (u.dived) ctx.globalAlpha = 0.5;
       drawUnit(ctx, r, u.kind, u.player, x * size, y * size, size, u.moved && u.player === s.turn);
       ctx.globalAlpha = 1;
@@ -1078,7 +1124,7 @@ export class Match {
     for (const fx of this.anim.effects) {
       const t = (now - fx.t0) / fx.dur;
       if (fx.kind === 'text') {
-        ctx.font = `${Math.max(10, 6 * this.scale)}px kenney, monospace`;
+        ctx.font = `${Math.max(10, (fx.big ? 8 : 6) * this.scale)}px kenney, monospace`;
         ctx.textAlign = 'center';
         ctx.lineWidth = Math.max(2, this.scale);
         ctx.strokeStyle = '#1b1a26';
@@ -1101,6 +1147,55 @@ export class Match {
         const px = (ax + (bx - ax) * t + 0.5) * size, py = (ay + (by - ay) * t + 0.5) * size - Math.sin(t * Math.PI) * size * 0.4 * Math.min(3, Math.abs(bx - ax) + Math.abs(by - ay) - 1);
         ctx.fillStyle = '#fff6c0';
         ctx.fillRect(px - this.scale * 1.5, py - this.scale * 1.5, this.scale * 3, this.scale * 3);
+      } else if (fx.kind === 'flash') {
+        const cx = (fx.at[0] + 0.5 + fx.dir[0] * 0.45) * size, cy = (fx.at[1] + 0.5 + fx.dir[1] * 0.45) * size;
+        ctx.fillStyle = `rgba(255,240,170,${1 - t})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * (0.12 + 0.18 * (1 - t)), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (fx.kind === 'shell' || fx.kind === 'missile') {
+        const [ax, ay] = fx.from, [bx, by] = fx.to;
+        const dist = Math.abs(bx - ax) + Math.abs(by - ay);
+        const arc = fx.kind === 'shell' ? size * 0.35 * Math.min(4, dist) : 0;
+        for (let k = 0; k < 6; k++) {
+          const tt = Math.max(0, t - k * 0.05);
+          const px = (ax + (bx - ax) * tt + 0.5) * size, py = (ay + (by - ay) * tt + 0.5) * size - Math.sin(tt * Math.PI) * arc;
+          ctx.fillStyle = k === 0 ? '#fff6c0' : `rgba(${fx.kind === 'missile' ? '255,170,90' : '220,220,230'},${0.5 - k * 0.08})`;
+          const sz = this.scale * (k === 0 ? 3 : 2.2 - k * 0.25);
+          ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+        }
+      } else if (fx.kind === 'impact') {
+        const cx = (fx.at[0] + 0.5) * size, cy = (fx.at[1] + 0.5) * size;
+        ctx.strokeStyle = `rgba(255,230,150,${1 - t})`;
+        ctx.lineWidth = Math.max(2, this.scale * 1.5 * (1 - t));
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * (0.15 + 0.4 * t), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255,255,255,${0.7 * (1 - t) ** 2})`;
+        ctx.beginPath();
+        ctx.arc(cx, cy, size * 0.22 * (1 - t), 0, Math.PI * 2);
+        ctx.fill();
+      } else if (fx.kind === 'smoke') {
+        const cx = (fx.at[0] + 0.5) * size, cy = (fx.at[1] + 0.5) * size;
+        for (let i = 0; i < 5; i++) {
+          const k = Math.min(1, Math.max(0, t * 1.3 - i * 0.08));
+          const sz = size * (0.12 + 0.25 * k);
+          ctx.fillStyle = `rgba(70,68,80,${0.55 * (1 - k)})`;
+          ctx.fillRect(cx + (i - 2) * size * 0.12 - sz / 2, cy - k * size * 0.8 - sz / 2, sz, sz);
+        }
+      } else if (fx.kind === 'sparkle') {
+        for (let i = 0; i < 6; i++) {
+          const px = (fx.at[0] + 0.15 + (i % 3) * 0.33) * size, py = (fx.at[1] + 0.85 - t * 0.7 - (i > 2 ? 0.2 : 0)) * size;
+          ctx.fillStyle = `rgba(150,255,150,${1 - t})`;
+          const sz = this.scale * 1.5;
+          ctx.fillRect(px - sz, py - sz / 3, sz * 2, sz * 0.66);
+          ctx.fillRect(px - sz / 3, py - sz, sz * 0.66, sz * 2);
+        }
+      } else if (fx.kind === 'screen') {
+        ctx.fillStyle = fx.color;
+        ctx.globalAlpha = 0.35 * (1 - t);
+        ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        ctx.globalAlpha = 1;
       } else if (fx.kind === 'ring') {
         ctx.strokeStyle = fx.color;
         ctx.globalAlpha = 1 - t;
@@ -1110,6 +1205,7 @@ export class Match {
         ctx.globalAlpha = 1;
       }
     }
+    ctx.restore();
   }
 
   drawPath(path, color) {
