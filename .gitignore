@@ -1,3 +1,4 @@
 target/
 maps-user/
 site/opentactics.wasm
+__pycache__/
