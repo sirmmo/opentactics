@@ -1,0 +1,123 @@
+{
+ "name": "3 · Factory floor",
+ "author": "OpenTactics",
+ "description": "Build an army and stop the raid.",
+ "width": 14,
+ "height": 9,
+ "players": 2,
+ "tiles": [
+  "..............",
+  ".c...f....^...",
+  "....====......",
+  "HF..=..=....c.",
+  "....====......",
+  ".c........f...",
+  "..............",
+  "...........^..",
+  ".........H...."
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 1,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 1,
+   "y": 1,
+   "player": 0
+  },
+  {
+   "x": 1,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 9,
+   "y": 8,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "infantry",
+   "x": 3,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 11,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "type": "infantry",
+   "x": 12,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "type": "recon",
+   "x": 11,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "mech",
+   "x": 12,
+   "y": 6,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "A raiding party is coming for our headquarters. Use the factory to build units and wipe the raiders out.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "no_enemy_units"
+   }
+  ],
+  "fail": [
+   {
+    "type": "lose_tile",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "type": "day",
+    "day": 12
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Tap your factory (next to the headquarters) to build. Units cannot move on the day they are built."
+   },
+   {
+    "day": 1,
+    "text": "Tanks are strong against vehicles, mechs are cheap tank-killers, infantry are cheap and capture."
+   },
+   {
+    "day": 2,
+    "text": "Every property you own pays you at the start of your turn."
+   },
+   {
+    "day": 3,
+    "text": "Units on your cities and headquarters are repaired a little each turn, for a share of their price."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "normal",
+    "style": "rusher"
+   }
+  }
+ },
+ "start_funds": 6000
+}

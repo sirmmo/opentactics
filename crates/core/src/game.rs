@@ -390,6 +390,8 @@ impl Game {
             let mut unit = game.fresh_unit(kind, u.player, x, y);
             unit.hp = u.hp.unwrap_or(FULL_HP).clamp(1, FULL_HP);
             unit.tag = u.tag.clone();
+            unit.fuel = u.fuel.map_or(unit.fuel, |f| f.min(unit.fuel));
+            unit.ammo = u.ammo.map_or(unit.ammo, |a| a.min(unit.ammo));
             game.s.units.push(unit);
             present[u.player] = true;
         }

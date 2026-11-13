@@ -117,6 +117,114 @@ function readFile(accept) {
 
 // ---- screens -------------------------------------------------------------
 
+// ---- missions ----
+
+const DONE_KEY = 'ot.missions';
+function missionsDone() {
+  try { return JSON.parse(localStorage.getItem(DONE_KEY) || '{}'); } catch { return {}; }
+}
+function markMissionDone(id) {
+  const done = missionsDone();
+  done[id] = true;
+  try { localStorage.setItem(DONE_KEY, JSON.stringify(done)); } catch { /* private mode */ }
+}
+
+async function missionsScreen() {
+  leaveEverything();
+  history.replaceState(null, '', location.pathname);
+  document.body.dataset.screen = 'setup';
+  app.replaceChildren(h('p', { class: 'loading' }, 'Loading…'));
+  let list;
+  try { list = await fetchJson('missions/index.json'); } catch (e) { return app.replaceChildren(h('div', { class: 'error' }, e.message)); }
+  const done = missionsDone();
+  const card = m => h('button', { class: `mission${done[m.id] ? ' done' : ''}`, onclick: () => briefing(m.id, list) },
+    h('b', {}, m.name), h('small', {}, m.description), done[m.id] ? h('span', { class: 'tick', title: 'Completed' }, '✓') : null);
+  app.replaceChildren(h('div', { class: 'setup-screen' },
+    h('header', { class: 'bar' }, h('button', { onclick: menu }, '← Back'), h('h2', {}, 'Missions')),
+    h('div', { class: 'missions' },
+      h('h3', {}, 'Tutorial'), h('div', { class: 'mission-list' }, list.filter(m => m.tutorial).map(card)),
+      h('h3', {}, 'Challenges'), h('div', { class: 'mission-list' }, list.filter(m => !m.tutorial).map(card)))));
+}
+
+/** Show a mission's briefing, then play it. */
+async function briefing(id, list) {
+  let map, rules;
+  try {
+    map = await fetchJson(`missions/${id}.json`);
+    rules = await fetchJson(map.rules ? new URL(map.rules, new URL(`missions/${id}.json`, location.href)).href : BUNDLED_RULES[0].url);
+  } catch (e) { return alert(e.message); }
+  const m = map.mission;
+  const opts = m.options || {};
+  const extras = [opts.fog && 'fog of war', opts.supply && 'fuel and ammo', opts.powers && 'powers', opts.weather && opts.weather !== 'off' && 'weather'].filter(Boolean);
+  const box = h('div', { class: 'popup menu briefing' },
+    h('div', { class: 'title big' }, map.name),
+    h('p', {}, m.briefing),
+    h('ul', { class: 'goals' }, goalLines(map, rules).map(([bad, text]) => h('li', { class: bad ? 'bad' : '' }, text))),
+    extras.length ? h('p', { class: 'muted small' }, `Played with ${extras.join(', ')}.`) : null,
+    h('button', { class: 'primary', onclick: () => playMission(id, map, rules, list) }, 'Start'),
+    h('button', { class: 'quiet', onclick: () => box.remove() }, 'Back'));
+  app.querySelector('.setup-screen').append(box);
+}
+
+function goalLines(map, rules) {
+  const m = map.mission, lines = [];
+  const tile = (x, y) => {
+    const glyph = map.tiles?.[y]?.[x];
+    return (rules.terrains.find(t => t.glyph === glyph)?.name || 'tile').toLowerCase();
+  };
+  const say = (g, bad) => {
+    switch (g.type) {
+      case 'capture': return bad ? `Do not let the enemy take the marked ${tile(g.x, g.y)}` : `Capture the marked ${tile(g.x, g.y)}`;
+      case 'lose_tile': return bad ? `Do not lose the marked ${tile(g.x, g.y)}` : `Make the enemy take the marked ${tile(g.x, g.y)}`;
+      case 'day': return bad ? `Finish before day ${g.day}` : `Hold out until day ${g.day}`;
+      case 'no_enemy_units': return bad ? 'Do not wipe out the enemy' : 'Destroy every enemy unit';
+      case 'no_units': return bad ? 'Keep at least one unit alive' : 'Lose all your units';
+      case 'unit_gone': return bad ? `Keep the ${g.tag} alive` : `Destroy the ${g.tag}`;
+      case 'unit_at': return bad ? `Keep the ${g.tag} away from the marked tile` : `Bring the ${g.tag} to the marked tile`;
+      default: return g.type;
+    }
+  };
+  for (const g of m.goals || []) lines.push([false, say(g, false)]);
+  for (const g of m.fail || []) lines.push([true, say(g, true)]);
+  return lines;
+}
+
+function playMission(id, map, rules, list) {
+  leaveEverything();
+  const m = map.mission;
+  let res;
+  try { res = engine.call({ op: 'new', rules, map, seed: Math.floor(Math.random() * 2 ** 31) }); } catch (e) { return alert(e.message); }
+  const profile = m.ai?.profile || { level: 'normal', style: 'balanced' };
+  const seats = Array.from({ length: map.players }, (_, i) => i === m.player
+    ? { name: myName(), local: true, ai: false }
+    : { name: 'Enemy', local: false, ai: true, profile });
+  document.body.dataset.screen = 'play';
+  const root = h('div', { class: 'play-screen' });
+  app.replaceChildren(root);
+  const next = list[list.findIndex(x => x.id === id) + 1];
+  const goals = goalLines(map, rules);
+  let saved = false;
+  match = new Match(root, {
+    engine, rules, state: res.state, income: res.income, seats, driver: true, onWatch: watchReplay,
+    menu: [
+      { label: 'Restart mission', action: () => playMission(id, map, rules, list) },
+      ...(next ? [{ label: `Next: ${next.name}`, action: () => missionsScreen().then(() => briefing(next.id, list)) }] : []),
+      { label: 'All missions', action: missionsScreen },
+      { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this mission?')) menu(); } },
+    ],
+    onHud: view => {
+      if (view.over && !saved && view.winners?.includes(m.player)) { saved = true; markMissionDone(id); }
+      const tips = (m.hints || []).filter(t => (t.day ?? 1) <= view.day).slice(-3).reverse();
+      return h('div', { class: 'objectives' },
+        h('h3', {}, 'Objectives'),
+        h('ul', { class: 'goals' }, goals.map(([bad, text]) => h('li', { class: bad ? 'bad' : '' }, text))),
+        tips.length ? h('div', { class: 'tips' }, tips.map(t => h('p', {}, t.text))) : null);
+    },
+  });
+  match.income = res.income;
+  match.updateHud();
+}
+
 /** A replay or a saved game, from a file the player picks. */
 async function openFile() {
   let doc;
@@ -219,6 +327,7 @@ function menu() {
     h('div', { class: 'logo' }, h('h1', {}, 'OPEN', h('span', {}, 'TACTICS')), h('p', {}, 'Turn-based skirmish on a grid. Same army for everyone.')),
     h('div', { class: 'choices' },
       h('button', { class: 'primary big', onclick: () => setup('local') }, 'Play', h('small', {}, 'Against the computer, or take turns on one screen')),
+      h('button', { class: 'big', onclick: () => missionsScreen() }, 'Missions', h('small', {}, 'Tutorial and challenges, one step at a time')),
       h('button', { class: 'big', onclick: () => setup('host') }, 'Host online', h('small', {}, 'Open a room and share its code')),
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
       h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw, test and share maps')),

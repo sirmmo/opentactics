@@ -454,6 +454,11 @@ pub struct MapUnit {
     /// A name missions can refer to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
+    /// Fuel and ammunition to start with, if not full.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fuel: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ammo: Option<u32>,
 }
 
 pub const MAX_MAP_SIDE: usize = 64;

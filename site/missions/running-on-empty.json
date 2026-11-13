@@ -1,0 +1,127 @@
+{
+ "name": "6 · Running on empty",
+ "author": "OpenTactics",
+ "description": "Fuel and ammo: refuel or fall from the sky.",
+ "width": 14,
+ "height": 7,
+ "players": 2,
+ "tiles": [
+  "..............",
+  ".A.....^......",
+  "..............",
+  "H....f....f...",
+  "..............",
+  ".c.....^....H.",
+  ".............."
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 1,
+   "y": 1,
+   "player": 0
+  },
+  {
+   "x": 1,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "copter",
+   "x": 4,
+   "y": 1,
+   "player": 0,
+   "fuel": 14
+  },
+  {
+   "type": "copter",
+   "x": 5,
+   "y": 4,
+   "player": 0,
+   "fuel": 12,
+   "ammo": 2
+  },
+  {
+   "type": "apc",
+   "x": 2,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 10,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "type": "infantry",
+   "x": 11,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "type": "mech",
+   "x": 9,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "type": "recon",
+   "x": 12,
+   "y": 3,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "Your helicopters are nearly dry. Aircraft burn fuel every day and crash at zero. Refuel at the airport or next to the carrier, then clear the field.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "no_enemy_units"
+   }
+  ],
+  "fail": [
+   {
+    "type": "no_units"
+   },
+   {
+    "type": "day",
+    "day": 12
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "The unit card shows fuel and ammo. A can or crate icon on a unit means it is running low."
+   },
+   {
+    "day": 1,
+    "text": "Units on your airport (aircraft), cities (ground) or next to your carrier are refilled at the start of your turn."
+   },
+   {
+    "day": 2,
+    "text": "A carrier can also refill its neighbours at once with Resupply."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "easy",
+    "style": "balanced"
+   }
+  },
+  "options": {
+   "supply": true
+  }
+ }
+}

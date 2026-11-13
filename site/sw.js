@@ -27,6 +27,8 @@ self.addEventListener('install', event => {
     try {
       const index = await (await fetch('maps/index.json')).json();
       await cache.addAll(index.map(m => `maps/${m.id}.json`));
+      const missions = await (await fetch('missions/index.json')).json();
+      await cache.addAll(['missions/index.json', ...missions.map(m => `missions/${m.id}.json`), 'js/stats.js']);
     } catch { /* they will be cached as they are used */ }
     await self.skipWaiting();
   })());

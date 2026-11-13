@@ -163,6 +163,19 @@ button.power.ready { border-color: var(--accent); color: var(--accent); box-shad
 .stats-grid line.grid { stroke: #ffffff14; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .stats-legend { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
 .stats-legend span::before { content: ''; display: inline-block; width: 12px; height: 4px; margin-right: 6px; vertical-align: middle; background: var(--c); border-radius: 2px; }
+.missions { padding: 8px 16px 24px; overflow: auto; max-width: 900px; width: 100%; margin: 0 auto; }
+.mission-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.mission { position: relative; display: flex; flex-direction: column; gap: 4px; text-align: left; padding: 12px 14px; }
+.mission small { color: var(--muted); }
+.mission.done { border-color: #4f7a4c; }
+.mission .tick { position: absolute; top: 8px; right: 10px; color: var(--good); font-family: system-ui, sans-serif; }
+.popup.menu.briefing { position: fixed; max-width: min(460px, calc(100% - 24px)); text-align: left; z-index: 20; box-shadow: 0 0 0 100vmax #000a, 0 8px 24px #000a; }
+.briefing .title.big { text-align: left; font-size: 24px; color: var(--text); }
+.goals { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; }
+.goals li::marker { color: var(--accent); } .goals li.bad::marker { color: var(--bad); }
+.objectives { background: #0003; border-radius: 6px; padding: 4px 8px 8px; margin-bottom: 6px; font-size: 13px; }
+.objectives h3 { margin-top: 4px; }
+.tips p { margin: 6px 0 0; color: #cfe8ff; font-size: 12px; border-left: 3px solid #4d7fa8; padding-left: 6px; }
 .toast { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 6; background: #4a2228; border: 2px solid var(--bad); padding: 8px 14px; border-radius: 6px; }
 
 /* editor */

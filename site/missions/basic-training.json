@@ -1,0 +1,91 @@
+{
+ "name": "1 · Basic training",
+ "author": "OpenTactics",
+ "description": "Move, attack, finish the job.",
+ "width": 12,
+ "height": 7,
+ "players": 2,
+ "tiles": [
+  "..f.........",
+  "..f....^^...",
+  "............",
+  "..=========.",
+  "............",
+  ".f.....f....",
+  "............"
+ ],
+ "owned": [],
+ "units": [
+  {
+   "type": "tank",
+   "x": 2,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 1,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 3,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 9,
+   "y": 2,
+   "player": 1,
+   "hp": 60
+  },
+  {
+   "type": "infantry",
+   "x": 10,
+   "y": 4,
+   "player": 1,
+   "hp": 50
+  }
+ ],
+ "mission": {
+  "briefing": "Two enemy squads have strayed into our training ground. Destroy them before day 8.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "no_enemy_units"
+   }
+  ],
+  "fail": [
+   {
+    "type": "day",
+    "day": 8
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Tap one of your units to see where it can go (white) and what it could hit (red)."
+   },
+   {
+    "day": 1,
+    "text": "Tap a white tile to move there, then choose Fire and tap a target, or Wait."
+   },
+   {
+    "day": 2,
+    "text": "The forecast shows the damage you deal and what comes back. Hurt units hit softer."
+   },
+   {
+    "day": 3,
+    "text": "Forests and mountains protect whoever stands on them."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "easy",
+    "style": "turtle"
+   }
+  }
+ }
+}

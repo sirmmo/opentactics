@@ -1,0 +1,118 @@
+{
+ "name": "5 · Into the fog",
+ "author": "OpenTactics",
+ "description": "Find hidden enemies before they find you.",
+ "width": 14,
+ "height": 10,
+ "players": 2,
+ "tiles": [
+  "..............",
+  "...ff....ff...",
+  ".......^......",
+  "..f.......f...",
+  "......==......",
+  "H.....==.....f",
+  "..f.......f...",
+  ".......^......",
+  "...ff....ff...",
+  ".............."
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 5,
+   "player": 0
+  }
+ ],
+ "units": [
+  {
+   "type": "recon",
+   "x": 1,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 1,
+   "y": 6,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 2,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 0,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 9,
+   "y": 1,
+   "player": 1
+  },
+  {
+   "type": "mech",
+   "x": 10,
+   "y": 8,
+   "player": 1
+  },
+  {
+   "type": "artillery",
+   "x": 12,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "type": "tank",
+   "x": 10,
+   "y": 3,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "Fog of war: you only see what your units see. Enemies hide in the woods. Scout, then strike.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "no_enemy_units"
+   }
+  ],
+  "fail": [
+   {
+    "type": "no_units"
+   },
+   {
+    "type": "day",
+    "day": 14
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Darkened tiles are out of sight. The recon sees furthest; mountains let foot units see further."
+   },
+   {
+    "day": 1,
+    "text": "Units in forests are only seen from right next to them."
+   },
+   {
+    "day": 2,
+    "text": "Moving into a hidden enemy stops your unit short: an ambush."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "normal",
+    "style": "turtle"
+   }
+  },
+  "options": {
+   "fog": true
+  }
+ }
+}

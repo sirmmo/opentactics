@@ -1,0 +1,117 @@
+{
+ "name": "7 · Convoy",
+ "author": "OpenTactics",
+ "description": "Get the carrier through the pass alive.",
+ "width": 16,
+ "height": 7,
+ "players": 2,
+ "tiles": [
+  "..^^^^^^^^^^^...",
+  "..^..........^..",
+  "....=========...",
+  "H===....f....===",
+  "....=========...",
+  "..^......f...^..",
+  "..^^^^^^^^^^^..."
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  }
+ ],
+ "units": [
+  {
+   "type": "apc",
+   "x": 1,
+   "y": 3,
+   "player": 0,
+   "tag": "convoy"
+  },
+  {
+   "type": "tank",
+   "x": 2,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "antiair",
+   "x": 2,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 1,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "artillery",
+   "x": 9,
+   "y": 1,
+   "player": 1
+  },
+  {
+   "type": "copter",
+   "x": 12,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "type": "infantry",
+   "x": 8,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "tank",
+   "x": 13,
+   "y": 2,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "Escort the supply carrier (the one in front of your headquarters) to the east end of the pass. If it is destroyed, the mission fails.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "unit_at",
+    "tag": "convoy",
+    "x": 15,
+    "y": 3
+   }
+  ],
+  "fail": [
+   {
+    "type": "unit_gone",
+    "tag": "convoy"
+   },
+   {
+    "type": "day",
+    "day": 12
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "The carrier is unarmed: keep your tank and anti-air between it and the enemy."
+   },
+   {
+    "day": 2,
+    "text": "Artillery fires from 2 to 3 tiles away and cannot be hit back by most units."
+   },
+   {
+    "day": 3,
+    "text": "The convoy must stop on the road tile at the far east edge."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "normal",
+    "style": "turtle"
+   }
+  }
+ }
+}

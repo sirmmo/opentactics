@@ -1,0 +1,97 @@
+{
+ "name": "2 · Taking ground",
+ "author": "OpenTactics",
+ "description": "Capture property to earn money and win.",
+ "width": 12,
+ "height": 7,
+ "players": 2,
+ "tiles": [
+  "............",
+  "..c.....f...",
+  ".....==.....",
+  "H...=..=..cH",
+  ".....==.....",
+  "..c.....^...",
+  "............"
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 11,
+   "y": 3,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "infantry",
+   "x": 1,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 1,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 2,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 10,
+   "y": 2,
+   "player": 1,
+   "hp": 40
+  }
+ ],
+ "mission": {
+  "briefing": "Take the enemy headquarters on the far side. Cities on the way pay 1000 a day each.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "capture",
+    "x": 11,
+    "y": 3
+   }
+  ],
+  "fail": [
+   {
+    "type": "day",
+    "day": 10
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Infantry and mechs capture. Move onto a city and choose Capture."
+   },
+   {
+    "day": 1,
+    "text": "A capture takes 20 points; a unit adds its health (up to 10) each turn, so two turns at full health."
+   },
+   {
+    "day": 2,
+    "text": "If the capturing unit moves away or is hurt, progress is lost or slower."
+   },
+   {
+    "day": 4,
+    "text": "Capturing the enemy headquarters wins at once."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "easy",
+    "style": "turtle"
+   }
+  }
+ }
+}

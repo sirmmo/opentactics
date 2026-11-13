@@ -1,0 +1,108 @@
+{
+ "name": "4 · Over the water",
+ "author": "OpenTactics",
+ "description": "Transports: board, sail, unload.",
+ "width": 14,
+ "height": 7,
+ "players": 2,
+ "tiles": [
+  "~~~~~~~~~~~~~~",
+  "~...~~~~~~...~",
+  "~H..~~~~~~.c.~",
+  "~...P~~~~~...~",
+  "~.c.~~~~~~..H~",
+  "~...~~~~~~...~",
+  "~~~~~~~~~~~~~~"
+ ],
+ "owned": [
+  {
+   "x": 1,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "x": 4,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 12,
+   "y": 4,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "infantry",
+   "x": 2,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 3,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "lander",
+   "x": 5,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "airlift",
+   "x": 2,
+   "y": 1,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 11,
+   "y": 4,
+   "player": 1,
+   "hp": 50
+  }
+ ],
+ "mission": {
+  "briefing": "The enemy headquarters is on the eastern island. Ferry your troops across and take it.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "capture",
+    "x": 12,
+    "y": 4
+   }
+  ],
+  "fail": [
+   {
+    "type": "day",
+    "day": 10
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Move a foot unit onto the lander or the airlift and choose Board."
+   },
+   {
+    "day": 1,
+    "text": "A loaded transport shows how many it carries. Move it, then choose Unload and tap where each passenger gets out."
+   },
+   {
+    "day": 2,
+    "text": "Passengers cannot act on the turn they get out; plan to land next to your target."
+   },
+   {
+    "day": 3,
+    "text": "The lander carries two units; the airlift one, but it flies."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "easy",
+    "style": "turtle"
+   }
+  }
+ }
+}

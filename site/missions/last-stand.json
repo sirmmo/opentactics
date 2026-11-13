@@ -1,0 +1,157 @@
+{
+ "name": "8 · Last stand",
+ "author": "OpenTactics",
+ "description": "Hold the headquarters for ten days.",
+ "width": 16,
+ "height": 7,
+ "players": 2,
+ "tiles": [
+  "................",
+  "..c....^....F...",
+  "........f.......",
+  "H.F...=====...F.",
+  "........f.....cH",
+  "..c....^....F...",
+  "................"
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 1,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 15,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "x": 14,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 12,
+   "y": 1,
+   "player": 1
+  },
+  {
+   "x": 12,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "x": 14,
+   "y": 4,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "tank",
+   "x": 3,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "artillery",
+   "x": 1,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 1,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "antiair",
+   "x": 3,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 11,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "tank",
+   "x": 12,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "type": "mech",
+   "x": 11,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "type": "artillery",
+   "x": 13,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "copter",
+   "x": 13,
+   "y": 5,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "Three enemy factories are pouring units toward us. Hold the headquarters until day 11.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "day",
+    "day": 11
+   }
+  ],
+  "fail": [
+   {
+    "type": "lose_tile",
+    "x": 0,
+    "y": 3
+   },
+   {
+    "type": "no_units"
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "You do not have to win, only last. Defensive ground and repairs on your cities count."
+   },
+   {
+    "day": 3,
+    "text": "Keep the factory free so you can keep building."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "hard",
+    "style": "rusher"
+   }
+  }
+ },
+ "start_funds": 4000
+}

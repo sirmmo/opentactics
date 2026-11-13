@@ -503,3 +503,23 @@ fn measure_hard_vs_normal() {
     }
     println!("hard {h} normal {n} draw {d}");
 }
+
+#[test]
+fn missions_load_and_finish() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/missions");
+    let index: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/index.json")).unwrap()).unwrap();
+    for m in index.as_array().unwrap() {
+        let id = m["id"].as_str().unwrap();
+        let text = std::fs::read_to_string(format!("{dir}/{id}.json")).unwrap();
+        let mut g = Game::new(rules(), &map(&text), 7).unwrap_or_else(|e| panic!("{id}: {e}"));
+        let mut steps = 0;
+        while !g.s.over {
+            let p = g.s.turn;
+            let action = ai::next_action(&g);
+            g.apply(p, &action).unwrap_or_else(|e| panic!("{id}: AI tried {action:?}: {e}"));
+            steps += 1;
+            assert!(steps < 100_000, "{id}: never ends");
+        }
+        println!("{id}: over on day {}, mission {}", g.s.day, if g.s.winners.contains(&0) { "won" } else { "lost" });
+    }
+}

@@ -110,7 +110,7 @@ export class Match {
       h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
         h('div', { class: 'stage' }, this.scroller, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
-        h('aside', { class: 'side' }, this.netEl, this.info, h('h3', {}, 'Log'), this.logEl)),
+        h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, h('h3', {}, 'Log'), this.logEl)),
     );
     this.ctx = this.canvas.getContext('2d');
 
@@ -257,6 +257,7 @@ export class Match {
       this.powerBtn.textContent = `⚡ ${Math.floor(100 * Math.min(1, charge / Math.max(...r.powers.map(p => p.charge))))}%`;
       this.powerBtn.classList.toggle('ready', ready && this.myTurn());
     }
+    if (this.onHud) this.extraEl.replaceChildren(this.onHud(this.view) || '');
     const mine = this.myTurn();
     this.endBtn.disabled = !mine;
     this.endBtn.textContent = s.over ? 'Game over' : mine ? 'End turn' : this.seats[s.turn]?.local ? 'Wait…' : `${this.playerName(s.turn)}…`;
@@ -1011,6 +1012,17 @@ export class Match {
         const low = (d.fuel && u.fuel <= Math.max(d.fuel / 4, (d.fuel_per_day || 0) * 2)) || (d.ammo && u.ammo === 0);
         if (low && this.allied(u.player, this.viewer() ?? u.player)) drawTile(ctx, d.ammo && u.ammo === 0 ? 191 : 192, x * size, y * size + size / 2, size / 2);
       }
+    }
+
+    // Mission targets.
+    for (const g of [...(s.mission?.goals || []), ...(s.mission?.fail || [])]) {
+      if (g.x == null) continue;
+      const bad = s.mission.fail.includes(g);
+      ctx.strokeStyle = bad ? 'rgba(255,122,107,0.9)' : `rgba(243,192,70,${0.6 + 0.3 * Math.sin(now / 300)})`;
+      ctx.lineWidth = Math.max(2, this.scale);
+      ctx.setLineDash([size / 6, size / 8]);
+      ctx.strokeRect(g.x * size + 2, g.y * size + 2, size - 4, size - 4);
+      ctx.setLineDash([]);
     }
 
     if (this.hover && (this.myTurn() || ui.mode === 'inspect' || ui.mode === 'idle')) {
