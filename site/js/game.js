@@ -9,11 +9,12 @@ import { T, drawTile, drawUnit, factionColor, terrainLayer, redrawTiles } from '
 import { fingerprint } from './engine.js';
 import * as sound from './sound.js';
 import { snapshot, statsView } from './stats.js';
+import * as settings from './settings.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const key = (x, y) => `${x},${y}`;
-const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const calm = () => settings.calm();
 
 // One background worker for the computer players, shared by every match.
 let worker = null, workerRules = null, workerId = 0;
@@ -142,7 +143,7 @@ export class Match {
     }
     this.soundBtn = h('button', { class: 'icon', title: 'Sound', onclick: () => { sound.setMuted(!sound.isMuted()); this.soundBtn.textContent = sound.isMuted() ? '🔇' : '🔊'; } }, sound.isMuted() ? '🔇' : '🔊');
     this.info = h('div', { class: 'info' });
-    this.logEl = h('ol', { class: 'log' });
+    this.logEl = h('ol', { class: 'log', role: 'log', 'aria-live': 'polite', 'aria-label': 'Battle log' });
     this.netEl = h('div', { class: 'net hidden' });
     this.popup = h('div', { class: 'popup hidden' });
     this.toastEl = h('div', { class: 'toast hidden' });
@@ -234,6 +235,21 @@ export class Match {
       if (e.key === 'Escape') this.cancel();
       if (e.key === 'e' || e.key === 'E') this.endTurn();
       if (e.key === 'n' || e.key === 'N') this.nextUnit();
+      if (e.key === '+' || e.key === '=') this.zoom(1);
+      if (e.key === '-' || e.key === '_') this.zoom(-1);
+      // Arrow keys move a cursor over the board; Enter or Space acts on its tile.
+      const step = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+      if (step && !e.target.closest?.('.popup')) {
+        e.preventDefault();
+        const c = this.hover || this.ui.dest || this.ui.unit || { x: Math.floor(this.view.width / 2), y: Math.floor(this.view.height / 2) };
+        this.hover = { x: Math.max(0, Math.min(this.view.width - 1, c.x + step[0])), y: Math.max(0, Math.min(this.view.height - 1, c.y + step[1])) };
+        if (!this.onScreen(this.hover.x, this.hover.y)) this.scrollToTile(this.hover.x, this.hover.y, false);
+        this.onHover();
+      }
+      if ((e.key === 'Enter' || e.key === ' ') && this.hover && !e.target.closest?.('button, .popup')) {
+        e.preventDefault();
+        this.onClick(this.hover.x, this.hover.y);
+      }
     };
     window.addEventListener('keydown', this.onKey);
     this.onResize = () => this.fit();
@@ -393,7 +409,7 @@ export class Match {
       class: `chip${act.includes(i) && !s.over ? ' active' : ''}${p.alive ? '' : ' out'}`,
       style: `--c:${factionColor(r, i)}`,
       title: `${this.playerName(i)}: ${s.units.filter(u => u.player === i).length} units${p.power != null ? ` · ${r.powers[p.power].name} active` : ''}`,
-    }, h('span', { class: 'dot' }), h('b', {}, this.playerName(i)), h('span', { class: 'funds' }, `${p.funds}`),
+    }, settings.get().symbols ? settings.symbolIcon(i, factionColor(r, i), 14) : h('span', { class: 'dot' }), h('b', {}, this.playerName(i)), h('span', { class: 'funds' }, `${p.funds}`),
       this.income[i] != null ? h('small', {}, `+${this.income[i]}`) : null,
       teams.length > 1 && p.team != null ? h('small', { class: 'tag team' }, `T${teams.indexOf(p.team) + 1}`) : null,
       p.power != null ? h('small', { class: 'tag pow' }, `⚡${r.powers[p.power].name}`) : null,
@@ -1259,6 +1275,7 @@ export class Match {
       musicBtn.textContent = `Music: ${sound.musicEnabled() ? 'on' : 'off'}`;
     } }, `Music: ${sound.musicEnabled() ? 'on' : 'off'}`);
     items.push(musicBtn);
+    items.push(h('button', { onclick: () => this.openSettings() }, 'Settings'));
     fill(this.menuEl, ...items, h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
     this.menuEl.classList.toggle('hidden');
   }
@@ -1451,6 +1468,16 @@ export class Match {
 
     const supply = s.options?.supply;
     const actNow = this.active();
+    const symbols = settings.get().symbols;
+    // Army symbols on owned property (top right of the tile).
+    if (symbols) {
+      for (let i = 0; i < s.owner.length; i++) {
+        if (s.owner[i] < 0) continue;
+        const x = i % s.width, y = Math.floor(i / s.width);
+        settings.drawSymbol(ctx, s.owner[i], x * size + size * 0.8, y * size + size * 0.2, size * 0.2, '#1b1a26');
+        settings.drawSymbol(ctx, s.owner[i], x * size + size * 0.8, y * size + size * 0.2, size * 0.14, factionColor(r, s.owner[i]));
+      }
+    }
     for (const u of s.units) {
       if (this.anim.blink === u.id && Math.floor(now / 70) % 2) continue;
       const ghost = ui.mode === 'menu' || ui.mode === 'target' || ui.mode === 'drop' ? ui.unit?.id === u.id : false;
@@ -1469,6 +1496,10 @@ export class Match {
       const hp = Math.ceil(u.hp / 10);
       if (hp < 10) drawTile(ctx, 180 + hp, x * size + size / 2, y * size + size / 2, size / 2);
       if (u.capture > 0) drawTile(ctx, 194, x * size, y * size + size / 2, size / 2);
+      else if (symbols) {
+        settings.drawSymbol(ctx, u.player, x * size + size * 0.19, y * size + size * 0.81, size * 0.2, '#1b1a26');
+        settings.drawSymbol(ctx, u.player, x * size + size * 0.19, y * size + size * 0.81, size * 0.14, factionColor(r, u.player));
+      }
       if (u.cargo?.length) {
         ctx.fillStyle = '#1b1a26';
         ctx.fillRect(x * size + size * 0.66, y * size, size * 0.34, size * 0.3);
@@ -1649,6 +1680,11 @@ export class Match {
     ctx.fillStyle = snow ? 'rgba(255,255,255,0.08)' : 'rgba(40,60,110,0.12)';
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
+  }
+
+  openSettings() {
+    fill(this.menuEl, settings.settingsPanel(h, () => { this.menuEl.classList.add('hidden'); this.updateHud(); }));
+    this.menuEl.classList.remove('hidden');
   }
 
   /** A small overview of the whole map: terrain, property, units, and the view. */

@@ -6,6 +6,7 @@ import { Match, h, $ } from './game.js';
 import { Editor } from './editor.js';
 import * as net from './net.js';
 import { statsFor } from './stats.js';
+import * as settings from './settings.js';
 
 const app = $('#app');
 const HOSTED = 'ot.hosted';
@@ -342,6 +343,12 @@ function resumeButton() {
     h('button', { class: 'quiet', onclick: e => { try { localStorage.removeItem(HOSTED); } catch { /* ignore */ } e.target.closest('.resume').remove(); } }, 'Forget it'));
 }
 
+function showSettings() {
+  const box = h('div', { class: 'popup menu settings-box' });
+  box.append(settings.settingsPanel(h, () => box.remove()));
+  app.append(box);
+}
+
 function menu() {
   leaveEverything();
   history.replaceState(null, '', location.pathname);
@@ -354,6 +361,7 @@ function menu() {
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
       h('button', { class: 'big', onclick: () => openEditor() }, 'Map editor', h('small', {}, 'Draw, test and share maps')),
       h('button', { class: 'big', onclick: () => openFile() }, 'Load replay or save', h('small', {}, 'Watch a recorded game, or carry on a saved one')),
+      h('button', { class: 'big', onclick: () => showSettings() }, 'Settings', h('small', {}, 'Army symbols, text size, motion, sound and music')),
     ),
     resumeButton(),
     h('div', { class: 'install-slot' }, installButton()),
@@ -997,6 +1005,7 @@ async function boot() {
     app.replaceChildren(h('div', { class: 'error' }, e.message));
     return;
   }
+  settings.apply();
   window.__ot = { engine, openDocument }; // handy in the console
   const q = new URLSearchParams(location.search);
   if (q.get('join')) return joinScreen(net.cleanCode(q.get('join')));
