@@ -37,13 +37,21 @@ enum Request {
     Reach { unit: u32 },
     /// The way to a tile and what the unit could do there.
     Options { unit: u32, x: i32, y: i32 },
-    /// What the current player can build on a tile.
-    Builds { x: i32, y: i32 },
+    /// What a player (default: the current one) can build on a tile.
+    Builds {
+        x: i32,
+        y: i32,
+        #[serde(default)]
+        player: Option<usize>,
+    },
     Act { player: usize, action: Action },
     /// Ask the computer for the current player's next action.
     Ai {
         #[serde(default)]
         profile: Option<ai::Profile>,
+        /// Which of the players whose turn it is (default: the first).
+        #[serde(default)]
+        player: Option<usize>,
     },
 }
 
@@ -167,8 +175,8 @@ fn handle(text: &str) -> Result<Value, String> {
                 "supply": stop && def.supplies,
             }))
         }),
-        Request::Builds { x, y } => with_game(|g| {
-            let player = g.s.turn;
+        Request::Builds { x, y, player } => with_game(|g| {
+            let player = player.unwrap_or(g.s.turn);
             let funds = g.s.players[player].funds;
             let list: Vec<Value> = g
                 .build_options(player, x, y)
@@ -183,11 +191,15 @@ fn handle(text: &str) -> Result<Value, String> {
             out["events"] = json!(events);
             Ok(out)
         }),
-        Request::Ai { profile } => with_game(|g| {
+        Request::Ai { profile, player } => with_game(|g| {
             if g.s.over {
                 return Err("The game is over.".into());
             }
-            Ok(json!({ "action": ai::next_action_with(g, &profile.unwrap_or_default()) }))
+            let me = player.unwrap_or(g.s.turn);
+            if !g.s.active.contains(&me) {
+                return Err("It is not that player's turn.".into());
+            }
+            Ok(json!({ "action": ai::next_action_for(g, me, &profile.unwrap_or_default()) }))
         }),
     }
 }

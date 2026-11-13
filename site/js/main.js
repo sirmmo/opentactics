@@ -253,7 +253,7 @@ function continueSave(save) {
   leaveEverything();
   let res;
   try { res = engine.call({ op: 'load', rules: save.rules, state: save.state }); } catch (e) { return alert(`Could not load the game: ${e.message}`); }
-  const seats = save.seats.map(st => ({ name: st.ai ? 'Computer' : st.name || 'Player', ai: !!st.ai, local: !st.ai }));
+  const seats = save.seats.map((st, i) => ({ name: st.ai ? save.rules.factions[i]?.name || 'Computer' : st.name || 'Player', ai: !!st.ai, local: !st.ai }));
   document.body.dataset.screen = 'play';
   const root = h('div', { class: 'play-screen' });
   app.replaceChildren(root);
@@ -477,7 +477,11 @@ async function setup(mode, preset = {}) {
   async function chooseMap(map, keepSeats, url) {
     engine.call({ op: 'check', rules: cfg.rules, map });
     cfg.map = map;
-    if (!keepSeats) cfg.mapUrl = url || null;
+    if (!keepSeats) {
+      cfg.mapUrl = url || null;
+      // Big games are much quicker when far-apart players move together.
+      cfg.options.simultaneous = map.players > 8;
+    }
     renderLink();
     markChosen();
     if (!keepSeats || cfg.seats.length !== map.players) {
@@ -498,10 +502,11 @@ async function setup(mode, preset = {}) {
     if (cfg.map?.mission) return optsEl.replaceChildren(h('p', { class: 'muted small' }, 'This mission sets its own rules.'));
     const box = (k, label, hint) => h('label', { class: 'opt', title: hint },
       h('input', { type: 'checkbox', checked: o[k], onchange: e => { o[k] = e.target.checked; sendLobby(); } }), h('span', {}, label, h('small', {}, hint)));
-    const items = [
+    const items = [];
+    if ((cfg.map?.players || 0) >= 3) items.push(box('simultaneous', 'Far players move at once', 'Players who cannot reach each other this round take their turns at the same time (teammates too). Everyone still plays once a day.'));
+    items.push(
       box('fog', 'Fog of war', 'You only see what your units and property see.'),
-      box('supply', 'Fuel and ammo', 'Units run out; aircraft and ships are lost with empty tanks. Refill at your property or next to a carrier.'),
-    ];
+      box('supply', 'Fuel and ammo', 'Units run out; aircraft and ships are lost with empty tanks. Refill at your property or next to a carrier.'));
     if (r.powers?.length) items.push(box('powers', 'Powers', `Charge up by fighting, then use one of ${r.powers.length} powers. Everyone picks from the same list.`));
     if (r.weather?.length > 1) {
       if (o.weather !== 'off' && o.weather !== 'random' && !r.weather.some(w => w.id === o.weather)) o.weather = 'off';
@@ -550,7 +555,7 @@ async function setup(mode, preset = {}) {
       // Teams only make sense with three or more seats.
       const team = cfg.seats.length > 2 && !cfg.map.mission ? h('select', { class: 'team', title: 'Team', onchange: e => { seat.team = e.target.value === '' ? null : +e.target.value; sendLobby(); } },
         h('option', { value: '', selected: seat.team == null }, 'No team'),
-        ...[1, 2, 3, 4].slice(0, Math.floor(cfg.seats.length / 2) + (cfg.seats.length > 4 ? 1 : 0)).map(t => h('option', { value: t, selected: seat.team === t }, `Team ${t}`))) : null;
+        ...Array.from({ length: Math.min(8, Math.ceil(cfg.seats.length / 2)) }, (_, k) => k + 1).map(t => h('option', { value: t, selected: seat.team === t }, `Team ${t}`))) : null;
       return h('div', { class: 'seat', style: `--c:${factionColor(cfg.rules, i)}` },
         h('span', { class: 'dot' }), h('b', {}, cfg.rules.factions[i].name), sel, h('span', { class: 'who' }, brain || who, team));
     }));
@@ -596,6 +601,7 @@ async function setup(mode, preset = {}) {
 
   function optionsText() {
     const o = cfg.options, list = [];
+    if (o.simultaneous) list.push('far players moving at once');
     if (o.fog) list.push('fog of war');
     if (o.supply) list.push('fuel and ammo');
     if (o.powers) list.push('powers');
@@ -666,13 +672,15 @@ async function setup(mode, preset = {}) {
   }
 
   // ---- turn timer (host) ----
-  let deadline = null, timedTurn = -1;
+  // One clock per round: it starts when a new group of players starts their turns.
+  let deadline = null, timedGroup = [];
   function armTimer(state) {
     if (!cfg.timer || !match) return;
     if (state.over) { deadline = null; broadcastTimer(state.turn, null); return; }
-    if (state.turn === timedTurn && deadline) return;
-    timedTurn = state.turn;
-    const human = cfg.seats[state.turn]?.kind !== 'ai';
+    const group = state.active?.length ? state.active : [state.turn];
+    if (group.some(p => timedGroup.includes(p))) return;
+    timedGroup = group;
+    const human = group.some(p => cfg.seats[p]?.kind !== 'ai');
     deadline = human ? Date.now() + cfg.timer * 1000 : null;
     broadcastTimer(state.turn, human ? cfg.timer * 1000 : null);
   }
@@ -683,9 +691,11 @@ async function setup(mode, preset = {}) {
   function checkTimer() {
     if (!deadline || !match || match.busy || match.queue.length || match.view.over || Date.now() < deadline) return;
     deadline = null;
-    const turn = engine.call({ op: 'state' }).state.turn;
-    match.showChat('Host', -1, `Time is up for ${match.playerName(turn)}.`);
-    match.commit(turn, { type: 'end_turn' });
+    const st = engine.call({ op: 'state' }).state;
+    const late = (st.active?.length ? st.active : [st.turn]).filter(p => cfg.seats[p]?.kind !== 'ai');
+    if (!late.length) return;
+    match.showChat('Host', -1, `Time is up for ${late.map(p => match.playerName(p)).join(', ')}.`);
+    for (const p of late) match.commit(p, { type: 'end_turn' });
   }
 
   // ---- keeping the hosted game, so a reload can pick it up ----
@@ -707,7 +717,7 @@ async function setup(mode, preset = {}) {
   }
 
   function seatsForGuests() {
-    return cfg.seats.map(s => ({ name: s.kind === 'ai' ? 'Computer' : s.name || 'Player', ai: s.kind === 'ai' }));
+    return cfg.seats.map((s, i) => ({ name: s.kind === 'ai' ? cfg.rules.factions[i].name : s.name || 'Player', ai: s.kind === 'ai' }));
   }
 
   function sendSync(conn, token) {
@@ -742,7 +752,8 @@ async function setup(mode, preset = {}) {
         : engine.call({ op: 'new', rules: cfg.rules, map: cfg.map, seed: Math.floor(Math.random() * 2 ** 31), setup: { options } });
     } catch (e) { return showError(e); }
     document.body.dataset.screen = 'play';
-    const seats = cfg.seats.map(s => ({ name: s.kind === 'ai' ? 'Computer' : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai', profile: s.kind === 'ai' ? s.profile : undefined }));
+    // Computers go by their army's name, so a big game's log stays readable.
+    const seats = cfg.seats.map((s, i) => ({ name: s.kind === 'ai' ? cfg.rules.factions[i].name : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai', profile: s.kind === 'ai' ? s.profile : undefined }));
     // In a local game with several humans, name them after their armies.
     seats.forEach((s, i) => { if (s.local && mode === 'local' && cfg.seats.filter(x => x.kind === 'local').length > 1) s.name = cfg.rules.factions[i].name; });
     const menuItems = [
@@ -754,7 +765,7 @@ async function setup(mode, preset = {}) {
       } },
     ];
     if (mode === 'host') menuItems.splice(1, 0, { label: 'Computer takes empty seats', action: () => {
-      cfg.seats.forEach((s, i) => { if (s.kind === 'peer' && !s.conn?.open) { s.kind = 'ai'; match.seats[i].ai = true; match.seats[i].name = 'Computer'; } });
+      cfg.seats.forEach((s, i) => { if (s.kind === 'peer' && !s.conn?.open) { s.kind = 'ai'; match.seats[i].ai = true; match.seats[i].name = cfg.rules.factions[i].name; } });
       for (const g of room.guests.values()) if (g.conn.open) sendSync(g.conn, g.token);
       match.afterIdle();
     } });

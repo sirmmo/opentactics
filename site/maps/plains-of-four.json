@@ -1,0 +1,91 @@
+{
+ "name": "Plains of Four",
+ "author": "OpenTactics",
+ "description": "Four armies on open ground. Quick and bloody.",
+ "width": 18,
+ "height": 18,
+ "players": 4,
+ "tiles": [
+  ".fff.ffffffff.fff.",
+  "ffff.ffffff...ffff",
+  "ff........f.c...ff",
+  "ff.H=..c..f...H.ff",
+  "....=F.......==...",
+  "f.c..==c..c.=F..ff",
+  "f.....=======...ff",
+  "ffff.c==..==c.c.ff",
+  "ff....=....=....ff",
+  "ff....=....=....ff",
+  "ff.c.c==..==c.ffff",
+  "ff...=======.....f",
+  "ff..F=.c..c==..c.f",
+  "...==.......F=....",
+  "ff.H...f..c..=H.ff",
+  "ff...c.f........ff",
+  "ffff...ffffff.ffff",
+  ".fff.ffffffff.fff."
+ ],
+ "owned": [
+  {
+   "x": 12,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "x": 3,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 14,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 5,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 13,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "x": 4,
+   "y": 12,
+   "player": 3
+  },
+  {
+   "x": 15,
+   "y": 12,
+   "player": 2
+  },
+  {
+   "x": 12,
+   "y": 13,
+   "player": 2
+  },
+  {
+   "x": 3,
+   "y": 14,
+   "player": 3
+  },
+  {
+   "x": 14,
+   "y": 14,
+   "player": 2
+  },
+  {
+   "x": 5,
+   "y": 15,
+   "player": 3
+  }
+ ],
+ "units": []
+}

@@ -201,17 +201,28 @@ export class Match {
     this.updateHud();
   }
 
+  /** Players taking their turn right now (several with simultaneous turns). */
+  active(state = this.view) {
+    return state?.active?.length ? state.active : state ? [state.turn] : [];
+  }
+
+  /** The seat a person on this device is playing right now, if any. */
+  acting(state = this.view) {
+    const act = this.active(state).filter(p => this.locals.includes(p));
+    if (!act.length) return null;
+    return act.includes(this.lastViewer) ? this.lastViewer : act[0];
+  }
+
   /** Whose eyes the board is shown through, or null to show everything. */
-  viewer(turn = this.view?.turn) {
+  viewer(state = this.view) {
     if (this.spectate || !this.locals.length) return null;
     if (this.locals.length === 1) return this.locals[0];
-    if (this.locals.includes(turn)) return turn;
-    return this.lastViewer ?? this.locals[0];
+    return this.acting(state) ?? this.lastViewer ?? this.locals[0];
   }
 
   /** What the viewer knows of the engine's current game (hidden enemies left out). */
   seen(state) {
-    const v = this.viewer(state.turn);
+    const v = this.viewer(state);
     if (v == null) { this.hidden = new Set(); return state; }
     this.lastViewer = v;
     try {
@@ -234,7 +245,7 @@ export class Match {
 
   myTurn() {
     const s = this.view;
-    return !s.over && !this.busy && !this.pending && this.queue.length === 0 && !!this.seats[s.turn]?.local;
+    return !s.over && !this.busy && !this.pending && this.queue.length === 0 && this.acting() != null;
   }
 
   unitAt(x, y) { return this.view.units.find(u => u.x === x && u.y === y); }
@@ -245,8 +256,10 @@ export class Match {
     const s = this.view, r = this.rules, o = s.options || {};
     this.dayEl.textContent = `Day ${s.day}`;
     const teams = o.teams?.length ? [...new Set(o.teams)] : [];
+    const act = this.active();
+    this.players.classList.toggle('many', s.players.length > 8);
     this.players.replaceChildren(...s.players.map((p, i) => h('div', {
-      class: `chip${i === s.turn && !s.over ? ' active' : ''}${p.alive ? '' : ' out'}`,
+      class: `chip${act.includes(i) && !s.over ? ' active' : ''}${p.alive ? '' : ' out'}`,
       style: `--c:${factionColor(r, i)}`,
       title: `${this.playerName(i)}: ${s.units.filter(u => u.player === i).length} units${p.power != null ? ` · ${r.powers[p.power].name} active` : ''}`,
     }, h('span', { class: 'dot' }), h('b', {}, this.playerName(i)), h('span', { class: 'funds' }, `${p.funds}`),
@@ -263,7 +276,7 @@ export class Match {
       this.weatherEl.dataset.w = w.id;
     }
     const powersOn = o.powers && r.powers?.length;
-    const me = this.seats[s.turn]?.local && !this.seats[s.turn]?.ai ? s.turn : this.viewer();
+    const me = this.acting() ?? this.viewer();
     this.powerBtn.classList.toggle('hidden', !powersOn || me == null);
     if (powersOn && me != null) {
       const cheapest = Math.min(...r.powers.map(p => p.charge));
@@ -275,7 +288,9 @@ export class Match {
     if (this.onHud) this.extraEl.replaceChildren(this.onHud(this.view) || '');
     const mine = this.myTurn();
     this.endBtn.disabled = !mine;
-    this.endBtn.textContent = s.over ? 'Game over' : mine ? 'End turn' : this.seats[s.turn]?.local ? 'Wait…' : `${this.playerName(s.turn)}…`;
+    const others = act.filter(p => !this.locals.includes(p));
+    this.endBtn.textContent = s.over ? 'Game over' : mine ? 'End turn' : this.acting() != null ? 'Wait…'
+      : others.length > 1 ? `${others.length} players…` : `${this.playerName(others[0] ?? s.turn)}…`;
     this.showInfo();
   }
 
@@ -356,12 +371,13 @@ export class Match {
     const s = this.view;
     if (s.over && !this.replay) return this.showResult();
     if (s.over && this.replay && this.rIndex >= this.replay.actions.length) this.showResult();
-    if (s.options?.fog && this.locals.length > 1 && this.locals.includes(s.turn) && this.curtainFor !== s.turn) {
-      this.curtainFor = s.turn;
+    const me = this.acting();
+    if (s.options?.fog && this.locals.length > 1 && me != null && this.curtainFor !== `${s.day}:${me}`) {
+      this.curtainFor = `${s.day}:${me}`;
       this.curtain.replaceChildren(
-        h('div', { class: 'big', style: `color:${factionColor(this.rules, s.turn)}` }, `${this.playerName(s.turn)}'s turn`),
+        h('div', { class: 'big', style: `color:${factionColor(this.rules, me)}` }, `${this.playerName(me)}'s turn`),
         h('p', { class: 'muted' }, 'Fog of war is on. Pass the device, then tap to see your side of the battle.'),
-        h('button', { class: 'primary', onclick: () => { this.curtain.classList.add('hidden'); this.focusPlayer(s.turn, false); } }, 'Show my side'));
+        h('button', { class: 'primary', onclick: () => { this.curtain.classList.add('hidden'); this.focusPlayer(me, false); } }, 'Show my side'));
       this.curtain.classList.remove('hidden');
     }
     if (this.replay) {
@@ -373,7 +389,7 @@ export class Match {
       }
       return;
     }
-    if (this.driver && this.seats[s.turn]?.ai && !this.busy) {
+    if (this.driver && this.active().some(p => this.seats[p]?.ai) && !this.busy) {
       clearTimeout(this.aiTimer);
       this.aiTimer = setTimeout(() => this.aiStep(), 180);
     }
@@ -410,21 +426,25 @@ export class Match {
   }
 
   aiStep() {
-    if (!this.alive || this.busy || this.queue.length || this.view.over || !this.seats[this.view.turn]?.ai) return;
+    if (!this.alive || this.busy || this.queue.length || this.view.over) return;
+    // The engine's truth, not the (possibly fogged) view.
+    const truth = this.engine.call({ op: 'state' }).state;
+    const p = this.active(truth).find(i => this.seats[i]?.ai);
+    if (p == null) return;
     let action;
     try {
-      action = this.engine.call({ op: 'ai', profile: this.seats[this.view.turn]?.profile }).action;
+      action = this.engine.call({ op: 'ai', player: p, profile: this.seats[p]?.profile }).action;
     } catch (e) {
       action = { type: 'end_turn' };
     }
-    this.commit(this.view.turn, action);
+    this.commit(p, action);
   }
 
   /** This player chose an action. */
   submit(action) {
     if (!this.myTurn()) return;
     this.clearUi();
-    const player = this.view.turn;
+    const player = this.acting();
     if (this.driver) {
       this.commit(player, action, { local: true });
     } else {
@@ -652,13 +672,20 @@ export class Match {
           break;
         }
         case 'turn': {
-          for (const u of s.units) u.moved = false;
-          s.turn = ev.player;
+          for (const u of s.units) if (u.player === ev.player) u.moved = false;
+          const group = events.filter(e => e.e === 'turn' && e.day === ev.day).map(e => e.player);
+          s.turn = group[0];
+          s.active = group;
           s.day = ev.day;
           this.updateHud();
-          sound.play('turn');
-          if (this.seats[ev.player]?.local) this.focusPlayer(ev.player);
-          this.banner(`Day ${ev.day}`, this.playerName(ev.player), factionColor(this.rules, ev.player));
+          // One banner per round: the local player's, or the first of the group.
+          const mineNow = group.find(p => this.locals.includes(p));
+          if (ev.player === (mineNow ?? group[0])) {
+            sound.play('turn');
+            if (this.locals.includes(ev.player)) this.focusPlayer(ev.player);
+            const who = group.length > 1 && mineNow == null ? `${group.length} players at once` : this.playerName(ev.player);
+            this.banner(`Day ${ev.day}`, who, factionColor(this.rules, ev.player));
+          }
           this.say(`Day ${ev.day}: ${this.playerName(ev.player)} (+${ev.income})`, ev.player);
           break;
         }
@@ -792,10 +819,11 @@ export class Match {
 
     const unit = this.unitAt(x, y);
     const s = this.view;
-    if (unit && this.myTurn() && unit.player === s.turn && !unit.moved) return this.select(unit);
+    const me = this.acting();
+    if (unit && this.myTurn() && unit.player === me && !unit.moved) return this.select(unit);
     if (unit) return this.inspect(unit);
-    if (this.myTurn() && this.ownerAt(x, y) === s.turn) {
-      const { builds } = this.engine.call({ op: 'builds', x, y });
+    if (this.myTurn() && this.ownerAt(x, y) === me) {
+      const { builds } = this.engine.call({ op: 'builds', x, y, player: me });
       if (builds.length) return this.openBuild(x, y, builds);
     }
     this.ui = { mode: 'idle' };
@@ -871,10 +899,10 @@ export class Match {
 
   openPowers() {
     const r = this.rules, s = this.view;
-    const me = this.seats[s.turn]?.local && !this.seats[s.turn]?.ai ? s.turn : this.viewer();
+    const me = this.acting() ?? this.viewer();
     if (me == null) return;
     const p = s.players[me];
-    const usable = this.myTurn() && me === s.turn && p.power == null;
+    const usable = this.myTurn() && me === this.acting() && p.power == null;
     const items = r.powers.map(pw => h('button', {
       class: 'buy power-row', disabled: !usable || (p.charge || 0) < pw.charge, title: pw.description || '',
       onclick: () => { this.menuEl.classList.add('hidden'); this.submit({ type: 'power', power: pw.id }); },
@@ -888,19 +916,19 @@ export class Match {
   }
 
   openBuild(x, y, builds) {
-    const r = this.rules, s = this.view;
+    const r = this.rules, s = this.view, me = this.acting();
     this.ui = { mode: 'build', at: { x, y } };
     const rows = builds.map(b => {
       const icon = h('canvas', { width: 32, height: 32 });
       const c = icon.getContext('2d');
       c.imageSmoothingEnabled = false;
-      drawUnit(c, r, b.kind, s.turn, 0, 0, 32);
+      drawUnit(c, r, b.kind, me, 0, 0, 32);
       return h('button', {
         class: 'buy', disabled: !b.ok, title: r.units[b.kind].description,
         onclick: () => this.submit({ type: 'build', x, y, unit: r.units[b.kind].id }),
       }, icon, h('span', {}, r.units[b.kind].name), h('b', {}, `${b.cost}`));
     });
-    this.popup.replaceChildren(h('div', { class: 'title' }, `Build · ${s.players[s.turn].funds} funds`), h('div', { class: 'buylist' }, rows),
+    this.popup.replaceChildren(h('div', { class: 'title' }, `Build · ${s.players[me].funds} funds`), h('div', { class: 'buylist' }, rows),
       h('button', { class: 'quiet', onclick: () => this.clearUi() }, 'Cancel'));
     this.placePopup(x, y);
   }
@@ -1004,7 +1032,7 @@ export class Match {
         : this.myTurn() ? (matchMedia('(pointer: coarse)').matches
           ? 'Your turn. Tap a unit, or a factory you own to build. Tap outside the highlighted tiles to cancel.'
           : 'Your turn. Pick a unit, or a factory you own to build. Right-click or Esc cancels; E ends the turn.')
-        : this.pending ? 'Sending…' : `Waiting for ${this.playerName(s.turn)}.`;
+        : this.pending ? 'Sending…' : `Waiting for ${this.active().filter(p => !this.locals.includes(p)).map(p => this.playerName(p)).join(', ') || this.playerName(s.turn)}.`;
       parts.push(h('p', { class: 'muted' }, tip));
     }
     this.info.replaceChildren(...parts);
@@ -1073,6 +1101,7 @@ export class Match {
     }
 
     const supply = s.options?.supply;
+    const actNow = this.active();
     for (const u of s.units) {
       if (this.anim.blink === u.id && Math.floor(now / 70) % 2) continue;
       const ghost = ui.mode === 'menu' || ui.mode === 'target' || ui.mode === 'drop' ? ui.unit?.id === u.id : false;
@@ -1084,7 +1113,7 @@ export class Match {
         else { const k = Math.sin(Math.PI * t) * 0.3; x += lg.dir[0] * k; y += lg.dir[1] * k; }
       }
       if (u.dived) ctx.globalAlpha = 0.5;
-      drawUnit(ctx, r, u.kind, u.player, x * size, y * size, size, u.moved && u.player === s.turn);
+      drawUnit(ctx, r, u.kind, u.player, x * size, y * size, size, u.moved && actNow.includes(u.player));
       ctx.globalAlpha = 1;
       const hp = Math.ceil(u.hp / 10);
       if (hp < 10) drawTile(ctx, 180 + hp, x * size + size / 2, y * size + size / 2, size / 2);

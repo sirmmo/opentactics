@@ -155,7 +155,7 @@ fn ai_plays_every_map_to_the_end() {
 
 #[test]
 fn ai_plays_every_map_with_every_option() {
-    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![] };
+    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true };
     ai_plays_all(options);
 }
 
@@ -476,7 +476,7 @@ fn hard_beats_easy_and_every_style_plays() {
     }
     assert!(hard_wins * 3 >= games * 2, "hard won only {hard_wins} of {games}");
     // Every style finishes games, with every option on.
-    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![] };
+    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true };
     for style in [Style::Rusher, Style::Turtle, Style::Economist] {
         let p = Profile { level: Level::Normal, style };
         for (_, text) in two.iter().take(3) {
@@ -522,4 +522,46 @@ fn missions_load_and_finish() {
         }
         println!("{id}: over on day {}, mission {}", g.s.day, if g.s.winners.contains(&0) { "won" } else { "lost" });
     }
+}
+
+#[test]
+fn far_players_take_their_turns_together() {
+    let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/maps/grand-melee.json")).unwrap();
+    let mut g = Game::with_setup(rules(), &map(&text), 1, Setup { options: Options { simultaneous: true, ..Default::default() } }).unwrap();
+    assert_eq!(g.s.active.len(), 8, "with no units yet, nobody can reach anybody");
+    // Let the computer build up armies, stopping when a new round starts on day 5.
+    while g.s.day < 5 || g.s.active.len() + g.s.waiting.len() < 8 {
+        let p = g.s.turn;
+        let a = ai::next_action(&g);
+        g.apply(p, &a).unwrap();
+    }
+    assert!(g.s.active.len() < 8, "armies now reach each other: {:?}", g.s.active);
+    // Nobody in a group can reach anybody else in it.
+    let zones: Vec<Vec<bool>> = g.s.active.iter().map(|p| g.zone(*p)).collect();
+    for i in 0..zones.len() {
+        for j in i + 1..zones.len() {
+            assert!(!zones[i].iter().zip(&zones[j]).any(|(a, b)| *a && *b), "{:?} overlap", (g.s.active[i], g.s.active[j]));
+        }
+    }
+    let idle = (0..8).find(|p| !g.s.active.contains(p)).unwrap();
+    assert!(g.apply(idle, &Action::EndTurn).is_err(), "only active players act");
+    // Over a day, everyone plays exactly once.
+    let alive: Vec<usize> = (0..8).filter(|p| g.s.players[*p].alive).collect();
+    let mut played = [0; 8];
+    let mut rounds = 0;
+    let day = g.s.day;
+    while g.s.day == day && !g.s.over {
+        rounds += 1;
+        for p in g.s.active.clone() {
+            played[p] += 1;
+            g.apply(p, &Action::EndTurn).unwrap();
+        }
+    }
+    for (p, n) in played.iter().enumerate() {
+        assert_eq!(*n, if alive.contains(&p) { 1 } else { 0 }, "player {p}");
+    }
+    println!("{} players in {rounds} rounds", alive.len());
+    // Without the option, one at a time.
+    let one = Game::new(rules(), &map(&text), 1).unwrap();
+    assert_eq!(one.s.active, vec![0]);
 }

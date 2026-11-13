@@ -147,6 +147,10 @@ h3 { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spa
 button.power { font-family: kenney-mono, monospace; }
 button.power.ready { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px -2px var(--accent); animation: glow 1.2s ease-in-out infinite alternate; }
 @keyframes glow { to { box-shadow: 0 0 18px 0 var(--accent); } }
+.players.many { gap: 4px; }
+.players.many .chip { padding: 2px 6px; font-size: 12px; gap: 4px; }
+.players.many .chip small:not(.team):not(.pow) { display: none; }
+.players.many .chip .dot { width: 9px; height: 9px; }
 .chip .tag.team { color: var(--text); } .chip .tag.pow { color: var(--accent); }
 .power-row { grid-template-columns: 1fr auto; }
 .power-row span { display: flex; flex-direction: column; } .power-row small { font-size: 11px; }

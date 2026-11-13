@@ -345,3 +345,72 @@ def check(m, rules):
             near[p] += 1 / len(winners)
     counts = [sum(1 for o in m["owned"] if o["player"] == p) for p in range(players)]
     return {"owned": counts, "nearest_neutral": [round(n, 1) for n in near], "neutral": len(neutral)}
+
+
+def balance(m, rules):
+    """Even out a map that could not be made exactly symmetric: give each player
+    who is nearest to fewer neutral properties than the best-off player extra
+    neutral cities in their own area, at a typical distance from their HQ."""
+    import heapq
+    w, h, players = m["width"], m["height"], m["players"]
+    rows = [list(r) for r in m["tiles"]]
+    cost = {t["glyph"]: t["move_cost"] for t in rules["terrains"]}
+    hqs = {o["player"]: (o["x"], o["y"]) for o in m["owned"] if m["tiles"][o["y"]][o["x"]] == 'H'}
+
+    def dist(src):
+        d = {src: 0}
+        q = [(0, src)]
+        while q:
+            c, (x, y) = heapq.heappop(q)
+            if c > d[(x, y)]:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h:
+                    step = cost[rows[ny][nx]].get("foot")
+                    if step and c + step < d.get((nx, ny), 1 << 30):
+                        d[(nx, ny)] = c + step
+                        heapq.heappush(q, (c + step, (nx, ny)))
+        return d
+
+    ds = [dist(hqs[p]) for p in range(players)]
+    owned = {(o["x"], o["y"]) for o in m["owned"]}
+
+    def shares():
+        near = [0.0] * players
+        typical = [[] for _ in range(players)]
+        for y in range(h):
+            for x in range(w):
+                if rows[y][x] in PROPS and (x, y) not in owned:
+                    dd = [ds[p].get((x, y), 1 << 30) for p in range(players)]
+                    best = min(dd)
+                    win = [p for p in range(players) if dd[p] == best]
+                    for p in win:
+                        near[p] += 1 / len(win)
+                        typical[p].append(best)
+        return near, typical
+
+    near, typical = shares()
+    target = max(near)
+    for p in range(players):
+        need = int(round(target - near[p] + 0.49))
+        typ = sorted(typical[p])[len(typical[p]) // 2] if typical[p] else 8
+        for _ in range(need):
+            best = None
+            for (x, y), d in ds[p].items():
+                if rows[y][x] not in '.f' or d < 3:
+                    continue
+                if any(ds[q].get((x, y), 1 << 30) <= d for q in range(players) if q != p):
+                    continue  # must be this player's own ground
+                if any(0 <= x + dx < w and 0 <= y + dy < h and rows[y + dy][x + dx] in PROPS
+                       for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+                    continue  # keep property spread out
+                score = (abs(d - typ), y, x)
+                if best is None or score < best[0]:
+                    best = (score, x, y)
+            if best is None:
+                break
+            _, x, y = best
+            rows[y][x] = 'c'
+    m["tiles"] = [''.join(r) for r in rows]
+    return m

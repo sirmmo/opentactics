@@ -67,7 +67,11 @@ pub fn next_action(g: &Game) -> Action {
 }
 
 pub fn next_action_with(real: &Game, p: &Profile) -> Action {
-    let me = real.s.turn;
+    next_action_for(real, real.s.turn, p)
+}
+
+/// The next action for `me`, who must be one of the players whose turn it is.
+pub fn next_action_for(real: &Game, me: usize, p: &Profile) -> Action {
     // Plan with what this side can see.
     let seen;
     let g = if real.s.options.fog || real.s.units.iter().any(|u| u.dived) {
@@ -76,7 +80,7 @@ pub fn next_action_with(real: &Game, p: &Profile) -> Action {
     } else {
         real
     };
-    if let Some(a) = power_action(g, p) {
+    if let Some(a) = power_action(g, me, p) {
         return a;
     }
     let danger = if p.level == Level::Hard { Some(Danger::new(g, me)) } else { None };
@@ -105,7 +109,7 @@ pub fn next_action_with(real: &Game, p: &Profile) -> Action {
     if let Some(unit) = waiting.first() {
         return unit_action(g, unit, p, danger.as_ref());
     }
-    build_action(g, p).unwrap_or(Action::EndTurn)
+    build_action(g, me, p).unwrap_or(Action::EndTurn)
 }
 
 /// A small, steady pseudo-random number for the easy level's mistakes.
@@ -119,8 +123,7 @@ fn noise(g: &Game, a: u32, b: i32, c: i32) -> i64 {
 
 // ---- powers ---------------------------------------------------------------
 
-fn power_action(g: &Game, p: &Profile) -> Option<Action> {
-    let me = g.s.turn;
+fn power_action(g: &Game, me: usize, p: &Profile) -> Option<Action> {
     let options = g.power_options(me);
     if options.is_empty() || p.level == Level::Easy && g.s.day.is_multiple_of(2) {
         return None;
@@ -612,8 +615,7 @@ fn nearest_approach(g: &Game, plan: &Reach, x: i32, y: i32) -> u32 {
 
 // ---- building ---------------------------------------------------------------
 
-fn build_action(g: &Game, p: &Profile) -> Option<Action> {
-    let me = g.s.turn;
+fn build_action(g: &Game, me: usize, p: &Profile) -> Option<Action> {
     let funds = g.s.players[me].funds;
     let mine: Vec<&Unit> = g.s.units.iter().filter(|u| u.player == me).collect();
     // The easy level builds one unit a turn.

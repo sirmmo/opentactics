@@ -126,5 +126,165 @@
   "width": 40,
   "height": 40,
   "players": 8
+ },
+ {
+  "id": "pocket-duel",
+  "name": "Pocket Duel",
+  "description": "A tiny, fast duel.",
+  "width": 12,
+  "height": 10,
+  "players": 2
+ },
+ {
+  "id": "wide-front",
+  "name": "Wide Front",
+  "description": "A long front cut by a river, with bridges to fight over.",
+  "width": 40,
+  "height": 16,
+  "players": 2
+ },
+ {
+  "id": "island-hop",
+  "name": "Island Hop",
+  "description": "Two islands around a lagoon. Ports and airfields decide it.",
+  "width": 30,
+  "height": 22,
+  "players": 2
+ },
+ {
+  "id": "highlands",
+  "name": "Highlands",
+  "description": "Mountain country: infantry and artillery rule here.",
+  "width": 24,
+  "height": 24,
+  "players": 2
+ },
+ {
+  "id": "small-triangle",
+  "name": "Small Triangle",
+  "description": "Three armies, close quarters.",
+  "width": 18,
+  "height": 18,
+  "players": 3
+ },
+ {
+  "id": "tri-lakes",
+  "name": "Tri-Lakes",
+  "description": "Three shores of one lake, with rivers between.",
+  "width": 30,
+  "height": 30,
+  "players": 3
+ },
+ {
+  "id": "plains-of-four",
+  "name": "Plains of Four",
+  "description": "Four armies on open ground. Quick and bloody.",
+  "width": 18,
+  "height": 18,
+  "players": 4
+ },
+ {
+  "id": "quad-islands",
+  "name": "Quad Islands",
+  "description": "Four islands split by straits.",
+  "width": 32,
+  "height": 32,
+  "players": 4
+ },
+ {
+  "id": "big-cross",
+  "name": "Big Cross",
+  "description": "A large four-way war with a ring road.",
+  "width": 40,
+  "height": 40,
+  "players": 4
+ },
+ {
+  "id": "pentagon",
+  "name": "Pentagon",
+  "description": "Five armies on an island.",
+  "width": 32,
+  "height": 32,
+  "players": 5
+ },
+ {
+  "id": "six-rivers",
+  "name": "Six Rivers",
+  "description": "Six armies, six rivers, one lake.",
+  "width": 40,
+  "height": 40,
+  "players": 6
+ },
+ {
+  "id": "hex-isles",
+  "name": "Hex Isles",
+  "description": "Six islands around a shared middle.",
+  "width": 36,
+  "height": 36,
+  "players": 6
+ },
+ {
+  "id": "octagon-lake",
+  "name": "Octagon Lake",
+  "description": "Eight armies around a big lake.",
+  "width": 48,
+  "height": 48,
+  "players": 8
+ },
+ {
+  "id": "eight-isles",
+  "name": "Eight Isles",
+  "description": "Eight islands joined by bridges.",
+  "width": 44,
+  "height": 44,
+  "players": 8
+ },
+ {
+  "id": "nine-lands",
+  "name": "Nine Lands",
+  "description": "Nine armies. Watch your neighbours.",
+  "width": 48,
+  "height": 48,
+  "players": 9
+ },
+ {
+  "id": "decagon",
+  "name": "Decagon",
+  "description": "Ten armies on one island.",
+  "width": 52,
+  "height": 52,
+  "players": 10
+ },
+ {
+  "id": "twelve-kingdoms",
+  "name": "Twelve Kingdoms",
+  "description": "Twelve armies around a small lake.",
+  "width": 56,
+  "height": 56,
+  "players": 12
+ },
+ {
+  "id": "clockwork",
+  "name": "Clockwork",
+  "description": "Twelve armies, each behind its own river.",
+  "width": 52,
+  "height": 52,
+  "players": 12
+ },
+ {
+  "id": "sixteen-banners",
+  "name": "Sixteen Banners",
+  "description": "Sixteen armies. The biggest war there is.",
+  "width": 64,
+  "height": 64,
+  "players": 16
+ },
+ {
+  "id": "grand-ring",
+  "name": "Grand Ring",
+  "description": "Sixteen armies on a ring of land around an inland sea.",
+  "width": 64,
+  "height": 64,
+  "players": 16
  }
 ]

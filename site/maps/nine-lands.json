@@ -1,0 +1,196 @@
+{
+ "name": "Nine Lands",
+ "author": "OpenTactics",
+ "description": "Nine armies. Watch your neighbours.",
+ "width": 48,
+ "height": 48,
+ "players": 9,
+ "tiles": [
+  ".^......ffff...ff^ff.f.f.ff.....ffffff.ff.....ff",
+  "..^....^^ffff......fffffff...^...^ffffffff...fff",
+  ".......ffffff...^.ffffffffff...^..ffffffff....ff",
+  "...ffffffff..^....fff...f.ff.........f..ff^^..ff",
+  "...ffffffff.......f...H.ffffff..fffffffffff^f.^f",
+  "....ff.ff.fff...fff.c.=...ffffffffffffffffffff.f",
+  ".^^ff.fffffffffffff...=F....ffff..f.fff.ffffff..",
+  ".^^fffffffffffffff.^..=..c...f..fc.^.fffff^fff..",
+  "ffffff.fff.fff.....^.c=........^..=H.fff...ff...",
+  "ffffffff..^...^..f....=c^^^ff.^...=.fffff.^.....",
+  "fff^..fff.H.F.c..ff^^^^=^^^^^^..c=F..fff....^..f",
+  "..f...ff.f.=....^^^^...=..^^^^^.=....fff.....fff",
+  "...^^.ff.c..=..^^^^^...=......f^c..c..fff..^^.ff",
+  ".......ff...c=c^...==========...=^^...fff.....ff",
+  "ff....ff..^..^.=..===......===.=.^^...ffffff..ff",
+  "f.^...fff...^^..==.....c......=...^^ff..ffffffff",
+  "^....fff..f.^...=.....f.f......=..^^f..^...fff.f",
+  "f..ffff...f^^..=..cf.fffffff.c..=.^^^^...c..ffff",
+  "fffffff...f^^.==...fffffffffff..==..^.c.....ff.f",
+  "..ffff..c^^^..=...ffff.ff.ffff...=..^..===H^.fff",
+  "fff.f....^^..=....ffffffffffff....=..fc..F..fff.",
+  ".ff...F..c^..=...ffffffffff.fff...====.....fffff",
+  "fff.H=========..fffffff..fffffffc.=..^^.c.ffff..",
+  ".fff....c.^..=.cffffff....ffffff..=..^^...ffff..",
+  "fff..c....^..=..ffffff....ff.ff...=.^^^...ff....",
+  "f.ff..^^^^^..==..ff.fff..ffffff..==.^^ff.fff...^",
+  "..ffff...f^^.=...fffffffffffffff..=.^^f..fff....",
+  "....fff.ff^^.==..ffff.fffff.fffc.==..^^...ff....",
+  "....fff...^^..=.c.ffffff.ffffff..=..^^..^.ff....",
+  "....fff...^^...=..fffffffffff...=.==f=c.....f...",
+  "..^..ff.c.^^^===....ffffffff....=..=cf==.c..ff.f",
+  "f...fff....c=...==....ff..fc..==...^^..==..fffff",
+  "f..ffff.....=^..===..c........==.^^^^..F.H..f..f",
+  "ff.fffff.F=c.^^^..==........==..^^^..c..f..fffff",
+  "fff.ff..==....^^^...===^=====...^^f....ffffff.f.",
+  "fff.ff.H....^.f^^^..=..==...=.^^^.f...ffffffff..",
+  "fffffff..c....ff^^^=....^^..^=^.....fffffff..f.f",
+  "ff.fffff...f.....^^cf^^^^^^^^c=c.^.ffff.ff.fffff",
+  "ff..f.ffffffff..c...=..^ff^^..==.^.fff.....fffff",
+  "ffffffffff.ffff.....=c^.ff.....=...ff...^^.fff^^",
+  "fffffff.....ffff..F=..^.....c.F=.c.ff.....ffff^.",
+  "..fffff..^....fff..=....ff.....fH..ff.^....ffff.",
+  "..^^^fff.....ffff.Hfc.fffffffff...fff.......ff.f",
+  "...^ffff.^.^.ffff.....fffffff.f.ffff..^ff......f",
+  "f...fff.......fffff.fff.....fffffff.ffffff....ff",
+  "fff^......ff^ff.fffffff.....fffff.ffffffff..ff^f",
+  "ffff.....ffffff.f.f.f.........f.ffffff^fff..ff^f",
+  "fffffff..ffffffffff.ff..^....ffff..fff^^..ff^^^^"
+ ],
+ "owned": [
+  {
+   "x": 22,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 20,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 23,
+   "y": 6,
+   "player": 0
+  },
+  {
+   "x": 33,
+   "y": 7,
+   "player": 1
+  },
+  {
+   "x": 35,
+   "y": 8,
+   "player": 1
+  },
+  {
+   "x": 10,
+   "y": 10,
+   "player": 8
+  },
+  {
+   "x": 12,
+   "y": 10,
+   "player": 8
+  },
+  {
+   "x": 34,
+   "y": 10,
+   "player": 1
+  },
+  {
+   "x": 9,
+   "y": 12,
+   "player": 8
+  },
+  {
+   "x": 41,
+   "y": 17,
+   "player": 2
+  },
+  {
+   "x": 42,
+   "y": 19,
+   "player": 2
+  },
+  {
+   "x": 41,
+   "y": 20,
+   "player": 2
+  },
+  {
+   "x": 6,
+   "y": 21,
+   "player": 7
+  },
+  {
+   "x": 4,
+   "y": 22,
+   "player": 7
+  },
+  {
+   "x": 5,
+   "y": 24,
+   "player": 7
+  },
+  {
+   "x": 41,
+   "y": 30,
+   "player": 3
+  },
+  {
+   "x": 39,
+   "y": 32,
+   "player": 3
+  },
+  {
+   "x": 41,
+   "y": 32,
+   "player": 3
+  },
+  {
+   "x": 9,
+   "y": 33,
+   "player": 6
+  },
+  {
+   "x": 7,
+   "y": 35,
+   "player": 6
+  },
+  {
+   "x": 9,
+   "y": 36,
+   "player": 6
+  },
+  {
+   "x": 18,
+   "y": 40,
+   "player": 5
+  },
+  {
+   "x": 30,
+   "y": 40,
+   "player": 4
+  },
+  {
+   "x": 33,
+   "y": 40,
+   "player": 4
+  },
+  {
+   "x": 32,
+   "y": 41,
+   "player": 4
+  },
+  {
+   "x": 18,
+   "y": 42,
+   "player": 5
+  },
+  {
+   "x": 20,
+   "y": 42,
+   "player": 5
+  }
+ ],
+ "units": []
+}

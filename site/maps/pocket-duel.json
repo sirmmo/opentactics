@@ -1,0 +1,53 @@
+{
+ "name": "Pocket Duel",
+ "author": "OpenTactics",
+ "description": "A tiny, fast duel.",
+ "width": 12,
+ "height": 10,
+ "players": 2,
+ "tiles": [
+  "f.f^ffff^f.f",
+  "..f....f....",
+  "..f.c....c..",
+  ".....cc.....",
+  "...F======H.",
+  ".H======F...",
+  ".....cc.....",
+  "..c....c.f..",
+  "....f....f..",
+  "f.f^ffff^f.f"
+ ],
+ "owned": [
+  {
+   "x": 9,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "x": 3,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 10,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "x": 1,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 8,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "x": 2,
+   "y": 7,
+   "player": 0
+  }
+ ],
+ "units": []
+}

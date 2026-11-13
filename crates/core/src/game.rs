@@ -90,6 +90,10 @@ pub struct Options {
     /// Team of each seat; empty means everyone for themselves.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub teams: Vec<usize>,
+    /// Players who cannot reach each other this round take their turns at the
+    /// same time (and teammates always do).
+    #[serde(default)]
+    pub simultaneous: bool,
 }
 
 /// Everything that changes during a game. With the rule set, this is the whole game.
@@ -104,8 +108,14 @@ pub struct State {
     pub owner: Vec<i8>,
     pub units: Vec<Unit>,
     pub players: Vec<Player>,
-    /// Whose turn it is.
+    /// Whose turn it is: the first of `active`.
     pub turn: usize,
+    /// Everyone taking their turn right now (more than one with simultaneous turns).
+    #[serde(default)]
+    pub active: Vec<usize>,
+    /// Players still to play today, in seat order.
+    #[serde(default)]
+    pub waiting: Vec<usize>,
     pub day: u32,
     pub over: bool,
     /// Set when the game is over, unless it was a draw: one of the winners.
@@ -359,6 +369,8 @@ impl Game {
                 units: vec![],
                 players,
                 turn: 0,
+                active: vec![],
+                waiting: (0..map.players).collect(),
                 day: 1,
                 over: false,
                 winner: None,
@@ -402,7 +414,7 @@ impl Game {
         if game.s.options.weather == "random" {
             game.roll_weather(&mut events);
         }
-        game.start_turn(&mut events);
+        game.next_group(&mut events);
         Ok(game)
     }
 
@@ -445,6 +457,15 @@ impl Game {
         }
         let mut game = Game { rules, s, cost: vec![], dmg: vec![] };
         game.index();
+        // Saves from before simultaneous turns: one player at a time.
+        if game.s.active.is_empty() && !game.s.over {
+            let (t, n) = (game.s.turn, game.s.players.len());
+            game.s.active = vec![t];
+            game.s.waiting = (t + 1..n).filter(|p| game.s.players[*p].alive).collect();
+        }
+        if game.s.active.iter().chain(game.s.waiting.iter()).any(|p| *p >= game.s.players.len()) {
+            return Err("state: bad turn order".into());
+        }
         Ok(game)
     }
 
@@ -926,14 +947,14 @@ impl Game {
             self.settle(&mut events);
             return Ok(events);
         }
-        if player != self.s.turn {
+        if !self.s.active.contains(&player) {
             return Err("It is not your turn.".into());
         }
         match action {
             Action::Move { unit, x, y, then } => self.move_unit(player, *unit, *x, *y, then, &mut events)?,
             Action::Build { x, y, unit } => self.build(player, *x, *y, unit, &mut events)?,
             Action::Power { power } => self.use_power(player, power, &mut events)?,
-            Action::EndTurn => self.next_turn(&mut events),
+            Action::EndTurn => self.end_turn(player, &mut events),
             Action::Resign => unreachable!(),
         }
         self.settle(&mut events);
@@ -1329,8 +1350,15 @@ impl Game {
         teams.dedup();
         if teams.len() <= 1 {
             self.finish(teams.first().copied(), events);
-        } else if !self.s.players[self.s.turn].alive {
-            self.next_turn(events);
+            return;
+        }
+        let players = &self.s.players;
+        self.s.active.retain(|p| players[*p].alive);
+        self.s.waiting.retain(|p| players[*p].alive);
+        if self.s.active.is_empty() {
+            self.next_group(events);
+        } else {
+            self.s.turn = self.s.active[0];
         }
     }
 
@@ -1361,31 +1389,134 @@ impl Game {
         }
     }
 
-    fn next_turn(&mut self, events: &mut Vec<Event>) {
-        let n = self.s.players.len();
-        let mut next = self.s.turn;
-        let mut new_day = false;
+    /// `player` is done for today.
+    fn end_turn(&mut self, player: usize, events: &mut Vec<Event>) {
+        self.s.active.retain(|p| *p != player);
+        if self.s.active.is_empty() {
+            self.next_group(events);
+        } else {
+            self.s.turn = self.s.active[0];
+        }
+    }
+
+    /// Start the next player's turn, or several at once with simultaneous turns.
+    /// A new day begins when everyone has played.
+    fn next_group(&mut self, events: &mut Vec<Event>) {
         loop {
-            next = (next + 1) % n;
-            if next == 0 {
+            let players = &self.s.players;
+            self.s.waiting.retain(|p| players[*p].alive);
+            if self.s.waiting.is_empty() {
                 self.s.day += 1;
-                new_day = true;
+                let limit = self.rules.victory.day_limit;
+                if limit > 0 && self.s.day > limit && self.s.mission.is_none() {
+                    let leader = self.leader();
+                    self.finish(leader, events);
+                    return;
+                }
+                if self.s.options.weather == "random" {
+                    self.roll_weather(events);
+                }
+                self.s.waiting = (0..self.s.players.len()).filter(|p| self.s.players[*p].alive).collect();
             }
-            if self.s.players[next].alive {
+            let group = self.form_group();
+            self.s.waiting.retain(|p| !group.contains(p));
+            self.s.active = group.clone();
+            self.s.turn = group[0];
+            for p in group {
+                if self.s.players[p].alive {
+                    self.start_turn(p, events);
+                }
+            }
+            if self.s.over {
+                return;
+            }
+            let players = &self.s.players;
+            self.s.active.retain(|p| players[*p].alive);
+            if !self.s.active.is_empty() {
+                self.s.turn = self.s.active[0];
                 break;
             }
         }
-        let limit = self.rules.victory.day_limit;
-        if limit > 0 && self.s.day > limit && self.s.mission.is_none() {
-            let leader = self.leader();
-            self.finish(leader, events);
-            return;
+        self.settle(events);
+    }
+
+    /// The next player waiting, plus (with simultaneous turns) every other
+    /// waiting player who cannot reach any of them this round, and teammates.
+    fn form_group(&self) -> Vec<usize> {
+        let first = self.s.waiting[0];
+        let mut group = vec![first];
+        if !self.s.options.simultaneous || self.s.waiting.len() == 1 {
+            return group;
         }
-        if new_day && self.s.options.weather == "random" {
-            self.roll_weather(events);
+        let mut zones: Vec<Option<Vec<bool>>> = vec![None; self.s.players.len()];
+        let mut zone = |g: &Game, p: usize| -> Vec<bool> { zones[p].get_or_insert_with(|| g.zone(p)).clone() };
+        let first_zone = zone(self, first);
+        let mut taken = vec![first_zone];
+        for &p in &self.s.waiting[1..] {
+            let z = zone(self, p);
+            let far = group
+                .iter()
+                .zip(taken.iter())
+                .all(|(q, tz)| self.allied(p, *q) || !z.iter().zip(tz.iter()).any(|(a, b)| *a && *b));
+            if far {
+                group.push(p);
+                taken.push(z);
+            }
         }
-        self.s.turn = next;
-        self.start_turn(events);
+        group
+    }
+
+    /// Every tile `player` could touch this round: their property, where their
+    /// units (and passengers) could go, and how far they could shoot from there,
+    /// with a tile to spare. Two players whose zones do not meet cannot affect
+    /// each other before their turns end.
+    pub fn zone(&self, player: usize) -> Vec<bool> {
+        let n = self.s.terrain.len();
+        let mut z = vec![false; n];
+        for (i, o) in self.s.owner.iter().enumerate() {
+            if *o == player as i8 {
+                z[i] = true;
+            }
+        }
+        let mut reach = 1u32;
+        for u in self.s.units.iter().filter(|u| u.player == player) {
+            let def = self.def(u);
+            let r = self.search(u.kind, player, u.x, u.y, def.moves + 1, true);
+            for (i, d) in r.dist.iter().enumerate() {
+                if *d != UNREACHABLE {
+                    z[i] = true;
+                }
+            }
+            let passengers = u.cargo.iter().map(|c| self.def(c).moves + self.def(c).range[1]).max().unwrap_or(0);
+            reach = reach.max(def.range[1] + 1).max(passengers + 1);
+        }
+        // Widen by `reach` tiles (any terrain): distance from the nearest marked tile.
+        let (w, h) = (self.s.width, self.s.height);
+        let mut dist = vec![u32::MAX; n];
+        let mut queue = std::collections::VecDeque::new();
+        for (i, on) in z.iter().enumerate() {
+            if *on {
+                dist[i] = 0;
+                queue.push_back(i);
+            }
+        }
+        while let Some(i) = queue.pop_front() {
+            if dist[i] >= reach {
+                continue;
+            }
+            let (x, y) = (i as i32 % w, i as i32 / w);
+            for (dx, dy) in DIRS {
+                let (nx, ny) = (x + dx, y + dy);
+                if nx >= 0 && ny >= 0 && nx < w && ny < h {
+                    let j = (ny * w + nx) as usize;
+                    if dist[j] == u32::MAX {
+                        dist[j] = dist[i] + 1;
+                        queue.push_back(j);
+                    }
+                }
+            }
+        }
+        dist.iter().map(|d| *d != u32::MAX).collect()
     }
 
     fn roll_weather(&mut self, events: &mut Vec<Event>) {
@@ -1440,10 +1571,9 @@ impl Game {
         }
     }
 
-    fn start_turn(&mut self, events: &mut Vec<Event>) {
-        let player = self.s.turn;
+    fn start_turn(&mut self, player: usize, events: &mut Vec<Event>) {
         self.s.players[player].power = None;
-        for u in self.s.units.iter_mut() {
+        for u in self.s.units.iter_mut().filter(|u| u.player == player) {
             u.moved = false;
         }
         let income = self.income(player);
@@ -1472,7 +1602,6 @@ impl Game {
             self.s.units[i].hp += heal;
             events.push(Event::Repair { unit: u.id, hp: u.hp + heal });
         }
-        self.settle(events);
     }
 
     /// Refill units on friendly property or next to a supply unit; others burn

@@ -1,0 +1,88 @@
+{
+ "name": "Tri-Lakes",
+ "author": "OpenTactics",
+ "description": "Three shores of one lake, with rivers between.",
+ "width": 30,
+ "height": 30,
+ "players": 3,
+ "tiles": [
+  ".ffff^f..f..ff...ffff^fffffff^",
+  "..fff^ffff..ff....fff^^fffffff",
+  ".fffffff........ffff^ffffffff.",
+  "ffff^fffff...H...fff^^ffffff~~",
+  "ffffff^fff.c.=...fff^^fffff~~~",
+  "ffffff^fff...=F...ff..fff.~~~f",
+  "ffffff^fffff.==.c.f...f.~~~~ff",
+  "ffffff..ffff.c=...c...f~~~.fff",
+  "~~.fff...fff..Afffffff~~~.ffff",
+  "~~~~.f...c.ff======ff~~~ffffff",
+  "f.~~~~~ffff===ffcf==~~~f..ffff",
+  "ff..~~~~~f==cffffff=fff...^^f^",
+  "ffffff~~~==fff~~f..==fc...^^^f",
+  "ffff..ff=f..~~~~~~f=f.ffffffff",
+  "ff^....f==ff~~~~~~fc=fffffffff",
+  "f^^...cf=fcf~~~~~~f==ffff.fff.",
+  "f^^ffff.f=fff~~~~fff=..f.....f",
+  "fffff.c.f=ffff~~ffffA.c=.c....",
+  "ffffff...A==fcf.ffc=f====.....",
+  "f..f...==.=f==f.ff==f..F.H..f.",
+  "ff.....F=c.f=f==f==f.c.....fff",
+  "f.....==.fff.ff==ffcf......fff",
+  "...f.H...fffcff~~f..fffff....f",
+  "fffff..c..ff..f~~f...ffff....f",
+  "fffff....fff..f~~f...ffff.ff.f",
+  "..f....ffff....~~ff..^^fff....",
+  "..ff.f..ff^^.ff.~~fff^^fffff..",
+  ".fff.fffff^^fff.~~fffff^^^^fff",
+  ".f.....ffffffff.~~fffff^ffffff",
+  "......ff^^^ffff.~~ffffffffffff"
+ ],
+ "owned": [
+  {
+   "x": 13,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 11,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 14,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 25,
+   "y": 17,
+   "player": 1
+  },
+  {
+   "x": 23,
+   "y": 19,
+   "player": 1
+  },
+  {
+   "x": 25,
+   "y": 19,
+   "player": 1
+  },
+  {
+   "x": 7,
+   "y": 20,
+   "player": 2
+  },
+  {
+   "x": 5,
+   "y": 22,
+   "player": 2
+  },
+  {
+   "x": 7,
+   "y": 23,
+   "player": 2
+  }
+ ],
+ "units": []
+}

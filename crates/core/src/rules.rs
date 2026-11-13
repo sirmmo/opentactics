@@ -273,8 +273,8 @@ impl Rules {
         if self.factions.len() < 2 {
             return Err("rules: at least two factions are needed".into());
         }
-        if self.factions.len() > 8 {
-            return Err("rules: at most eight factions are supported".into());
+        if self.factions.len() > 16 {
+            return Err("rules: at most sixteen factions are supported".into());
         }
         if self.terrains.is_empty() || self.terrains.len() > 250 {
             return Err("rules: between 1 and 250 terrains are needed".into());

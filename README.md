@@ -12,8 +12,10 @@ shape; they set the ground and the starting positions, not the rules.
   conditions all come from one JSON file (`site/rules/*.json`).
 - **Play** against the computer, take turns on one screen, or **online, browser to
   browser** (WebRTC). No game server is involved.
+- **Up to 16 players**, and 36 maps from 12x10 duels to 64x64 wars for 16.
 - **Optional rules, chosen at game start and the same for everyone**: fog of war, fuel
-  and ammunition, weather, powers, and teams (2v2, 3v3, 4v4 on the bigger maps).
+  and ammunition, weather, powers, teams, and **simultaneous turns**: players who cannot
+  reach each other this round move at the same time (on by default above 8 players).
 - **Sixteen units** including transports (carrier, airlift, lander) and a submarine
   that dives; damaged units of the same kind can join.
 - **Computer opponents** at three skill levels (Easy, Normal, Hard) and four styles
@@ -101,7 +103,7 @@ numbers: start money, no luck, a 15-day limit. Fields:
 | `capture` | `points` | a capturing unit adds its health (1-10) each turn |
 | `repair` | `hp`, `costs` | health restored per turn on own property; whether it costs money |
 | `victory` | `hq_capture`, `rout`, `day_limit` | win conditions; with a day limit, most properties wins |
-| `factions[]` | `name`, `view.row/color/flip`, optional `view.recolor{from,to,light}` | one per seat, up to 8; `row` picks the colour row in the tile sheet (five colours), `recolor` turns the hue `from` into hue `to` in the browser to make more. Nothing else is allowed: no per-army bonuses |
+| `factions[]` | `name`, `view.row/color/flip`, optional `view.recolor{from,to,light}` | one per seat, up to 16; `row` picks the colour row in the tile sheet (five colours), `recolor` turns the hue `from` into hue `to` in the browser to make more. Nothing else is allowed: no per-army bonuses |
 | `terrains[]` | `id`, `glyph`, `defense`, `move_cost{type: cost}`, `capturable`, `hq`, `income`, `builds[]`, `repairs[]`, `view` | a missing movement type cannot enter |
 | `units[]` | `id`, `class`, `move_type`, `moves`, `cost`, `range[min,max]`, `can_capture`, `flying`, `damage{unit: %}`, `view.tile`, `view.mark` | range over 1 means it cannot move and fire in one turn; `mark` is a letter for units that share a picture |
 | | `vision` | tiles seen with fog of war (default 2) |
@@ -117,12 +119,23 @@ defender health/10)%.
 
 ## Maps
 
-16 maps ship in `site/maps`: seven for two players, three for three, four for four
-(including First Contact, River Line and Four Corners), Hexfall for six and Grand
-Melee for eight. `python3 tools/make_maps.py site/maps` rebuilds them: the generator
-cuts the map into one wedge per player, so everyone gets the same ground (exactly for
-2, 4 and 8 players; as near as a square grid allows for 3 and 6, where it searches for
-the most even layout). The engine tests play every map in `index.json` to the end.
+36 maps ship in `site/maps`, for 2, 3, 4, 5, 6, 8, 9, 10, 12 and 16 players, from
+12x10 to 64x64. `python3 tools/make_maps.py site/maps` rebuilds them: the generator
+cuts the map into one wedge per player, so everyone gets the same ground. That is exact
+for 2, 4 and 8 players; for other counts it searches for the most even layout, and on
+big maps tops up any player short of nearby property with extra neutral cities. The
+engine tests play every map in `index.json` to the end, with and without every option.
+
+### Simultaneous turns
+
+With "Far players move at once", each round the engine works out every waiting
+player's zone: their property, everywhere their units (and passengers) could move this
+round, widened by how far they could shoot, plus a tile. The next waiting player
+starts, together with every other waiting player whose zone touches none of the
+group's (teammates always join). Nobody in a group can affect anybody else in it
+before their turns end, so the order of their actions does not matter to them. Online,
+the host still puts every action in one order, which keeps all browsers in step and
+replays exact. Each player still plays exactly once a day.
 
 A map is JSON: `name`, `width`, `height`, `players`, `tiles` (rows of terrain glyphs),
 `owned` (`{x, y, player}` for starting property), `units` (`{type, x, y, player}`),
