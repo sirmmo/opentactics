@@ -167,3 +167,19 @@ fn ai_plays_every_map_to_the_end() {
         assert!(a.s.units.len() > 2 || a.s.winner.is_some(), "{name}: the AI did not build an army");
     }
 }
+
+#[test]
+fn armies_cannot_carry_bonuses() {
+    let text = include_str!("../../../site/rules/default.json")
+        .replacen(r#""name": "Red","#, r#""name": "Red", "damage_bonus": 10,"#, 1);
+    assert!(text.contains("damage_bonus"), "test fixture did not patch the rules");
+    let err = Rules::from_json(&text).unwrap_err();
+    assert!(err.contains("damage_bonus"), "{err}");
+}
+
+#[test]
+fn maps_need_not_be_mirrored() {
+    // DUEL is lopsided on purpose: the rules are what must be equal, not the ground.
+    let game = duel();
+    assert_eq!(game.s.units.len(), 4);
+}

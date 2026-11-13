@@ -34,11 +34,29 @@ async function mapLibrary() {
   } catch {
     list = (await fetchJson('maps/index.json')).map(m => ({ ...m, url: `maps/${m.id}.json` }));
   }
+  for (const m of urlMaps()) {
+    if (!list.some(e => e.url && absUrl(e.url) === m.url)) list.push({ ...m, remote: true });
+  }
   const own = Editor.savedMaps();
   for (const [id, map] of Object.entries(own)) {
     list.push({ id: `local:${id}`, name: map.name, description: map.description, players: map.players, width: map.width, height: map.height, local: true, map });
   }
   return list;
+}
+
+// Maps added by URL are remembered in this browser so they stay in the map list.
+const URL_MAPS = 'ot.mapUrls';
+const absUrl = url => new URL(url, location.href).href;
+function urlMaps() {
+  try { return JSON.parse(localStorage.getItem(URL_MAPS) || '[]'); } catch { return []; }
+}
+function rememberUrlMap(url, map) {
+  const entry = { id: `url:${url}`, url, name: map.name, description: map.description, players: map.players, width: map.width, height: map.height };
+  const list = [entry, ...urlMaps().filter(m => m.url !== url)].slice(0, 50);
+  try { localStorage.setItem(URL_MAPS, JSON.stringify(list)); } catch { /* private mode */ }
+}
+function forgetUrlMap(url) {
+  try { localStorage.setItem(URL_MAPS, JSON.stringify(urlMaps().filter(m => m.url !== url))); } catch { /* private mode */ }
 }
 
 async function loadMapEntry(entry) {
@@ -102,6 +120,7 @@ async function setup(mode, preset = {}) {
   const rulesInfo = h('div', { class: 'muted small' });
   const seatsEl = h('div', { class: 'seats' });
   const roomEl = h('div', { class: 'room hidden' });
+  const linkEl = h('div', {});
   const startBtn = h('button', { class: 'primary', disabled: true, onclick: () => start() }, mode === 'host' ? 'Start the match' : 'Start');
 
   app.replaceChildren(h('div', { class: 'setup-screen' },
@@ -110,12 +129,12 @@ async function setup(mode, preset = {}) {
     h('div', { class: 'cols' },
       h('section', { class: 'maps' }, h('h3', {}, 'Map'),
         h('div', { class: 'row' },
-          h('button', { onclick: () => loadUrl() }, 'Load from URL'),
+          h('button', { onclick: () => loadUrl() }, 'Add map from URL'),
           h('button', { onclick: () => readFile('.json,application/json').then(m => chooseMap(m)).catch(showError) }, 'Load file')),
         mapList),
       h('section', { class: 'config' },
         h('h3', {}, 'Rules'), h('div', { class: 'row' }, rulesSel), rulesInfo,
-        h('h3', {}, 'Players'), seatsEl, roomEl)),
+        h('h3', {}, 'Players'), seatsEl, roomEl, linkEl)),
   ));
 
   async function setRules(doc, name) {
@@ -146,17 +165,24 @@ async function setup(mode, preset = {}) {
     } catch (e) { showError(e); }
   };
 
-  async function loadUrl(url) {
-    url ||= prompt('URL of a map (JSON):');
+  /** Load a map by URL (and the rule set it names, if any). New URLs join the map list. */
+  async function loadUrl(url, known) {
+    url ||= prompt('URL of a map (JSON):')?.trim();
     if (!url) return;
     clearError();
     try {
+      url = absUrl(url);
       const map = await fetchJson(url);
       if (map.rules) {
-        const rulesUrl = new URL(map.rules, new URL(url, location.href)).href;
+        const rulesUrl = absUrl(new URL(map.rules, url));
         await setRules(await fetchJson(rulesUrl), rulesUrl);
       }
-      await chooseMap(map);
+      await chooseMap(map, false, url);
+      // Only maps that load and pass the rules check join the list.
+      if (!known && !library.some(e => e.url && absUrl(e.url) === url)) {
+        rememberUrlMap(url, map);
+        await renderMaps();
+      }
     } catch (e) { showError(e); }
   }
 
@@ -164,9 +190,16 @@ async function setup(mode, preset = {}) {
   async function renderMaps() {
     try { library = await mapLibrary(); } catch (e) { showError(e); library = []; }
     mapList.replaceChildren(...library.map(entry => {
-      const card = h('button', { class: 'mapcard', title: entry.description || '' },
-        h('div', { class: 'thumb' }), h('b', {}, entry.name), h('small', {}, `${entry.width}×${entry.height} · ${entry.players} players${entry.local ? ' · yours' : entry.shared ? ' · shared' : ''}`));
+      const tag = entry.local ? ' · yours' : entry.remote ? ' · from URL' : entry.shared ? ' · shared' : '';
+      const card = h('button', { class: 'mapcard', title: entry.remote ? `${entry.description || ''}\n${entry.url}`.trim() : entry.description || '' },
+        h('div', { class: 'thumb' }), h('b', {}, entry.name), h('small', {}, `${entry.width}×${entry.height} · ${entry.players} players${tag}`));
+      if (entry.remote) {
+        const forget = h('span', { class: 'forget', title: 'Remove from this list' }, '×');
+        forget.onclick = async ev => { ev.stopPropagation(); forgetUrlMap(entry.url); await renderMaps(); };
+        card.append(forget);
+      }
       card.onclick = async () => {
+        if (entry.url) return loadUrl(entry.url, true);
         clearError();
         try { await chooseMap(await loadMapEntry(entry)); } catch (e) { showError(e); }
       };
@@ -176,12 +209,19 @@ async function setup(mode, preset = {}) {
       entry.card = card;
       return card;
     }));
+    markChosen();
   }
 
-  async function chooseMap(map, keepSeats) {
+  function markChosen() {
+    for (const c of mapList.children) c.classList.toggle('chosen', !!cfg.map && c.querySelector('b')?.textContent === cfg.map.name);
+  }
+
+  async function chooseMap(map, keepSeats, url) {
     engine.call({ op: 'check', rules: cfg.rules, map });
     cfg.map = map;
-    for (const c of mapList.children) c.classList.toggle('chosen', c.querySelector('b')?.textContent === map.name);
+    if (!keepSeats) cfg.mapUrl = url || null;
+    renderLink();
+    markChosen();
     if (!keepSeats || cfg.seats.length !== map.players) {
       cfg.seats = Array.from({ length: map.players }, (_, i) => ({
         kind: i === 0 ? 'local' : mode === 'host' ? 'open' : 'ai',
@@ -190,6 +230,17 @@ async function setup(mode, preset = {}) {
     }
     renderSeats();
     startBtn.disabled = false;
+  }
+
+  /** A link that opens this setup screen with the chosen map (only for maps that live at a URL). */
+  function renderLink() {
+    if (!cfg.mapUrl) return linkEl.replaceChildren();
+    const link = new URL(location.pathname, location.href);
+    link.searchParams.set('map', cfg.mapUrl);
+    if (mode === 'host') link.searchParams.set('host', '');
+    const input = h('input', { value: link.href, readonly: true, onfocus: e => e.target.select() });
+    const copy = h('button', { onclick: () => navigator.clipboard?.writeText(link.href).then(() => { copy.textContent = 'Copied'; }, () => input.select()) }, 'Copy');
+    linkEl.replaceChildren(h('h3', {}, 'Link to this map'), h('div', { class: 'row room' }, input, copy));
   }
 
   function renderSeats() {
@@ -506,7 +557,7 @@ async function boot() {
     if (q.get('rules')) {
       try { rules = { doc: await fetchJson(q.get('rules')), name: q.get('rules') }; } catch (e) { alert(e.message); }
     }
-    return setup('local', { mapUrl: q.get('map'), rules });
+    return setup(q.has('host') ? 'host' : 'local', { mapUrl: q.get('map'), rules });
   }
   if (q.get('edit') != null) return openEditor();
   if (q.get('demo') != null) return demo(q.get('demo') || 'river-line');

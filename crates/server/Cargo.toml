@@ -2,6 +2,7 @@
 name = "opentactics-server"
 version = "0.1.0"
 edition = "2021"
+license = "GPL-3.0-or-later"
 description = "Serves the OpenTactics site and a shared map library. Games themselves run browser to browser."
 
 [dependencies]

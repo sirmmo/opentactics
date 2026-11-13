@@ -72,7 +72,10 @@ pub struct Victory {
     pub day_limit: u32,
 }
 
+/// An army is only a name and a look. Every player gets the same units, costs and
+/// rules, so anything else here (a "faction bonus") is rejected when loading.
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Faction {
     pub name: String,
     #[serde(default)]

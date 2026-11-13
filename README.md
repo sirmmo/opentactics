@@ -3,15 +3,18 @@
 A turn-based tactical skirmish game for the browser, in the style of the classic
 handheld war games: square grid, cities that pay income, factories that build
 units, capture the enemy headquarters or wipe out their army. Every player has the
-same army and the same rules; maps are mirrored so both sides get the same ground.
+same army and the same rules: an army in a rule set is only a name and a colour, and
+the engine refuses rule sets that try to give one army anything more. Maps can be any
+shape; they set the ground and the starting positions, not the rules.
 
 - **Engine in Rust**, compiled to WebAssembly for the browser and native for the server.
 - **Rules are data**: terrain, units, damage tables, money, capture, repair and victory
   conditions all come from one JSON file (`site/rules/*.json`).
 - **Play** against the computer, take turns on one screen, or **online, browser to
   browser** (WebRTC). No game server is involved.
-- **Map editor** with mirrored painting, validation, save/download, publish, and test play.
-- **Remote maps**: load a map or rule set from any URL.
+- **Map editor** with free (or optionally mirrored) painting, validation, save/download, publish, and test play.
+- **Remote maps**: play on any map hosted at a URL (`?map=https://…/map.json`); maps
+  added by URL stay in your map list.
 
 ## Running
 
@@ -80,7 +83,7 @@ numbers: start money, no luck, a 15-day limit. Fields:
 | `capture` | `points` | a capturing unit adds its health (1-10) each turn |
 | `repair` | `hp`, `costs` | health restored per turn on own property; whether it costs money |
 | `victory` | `hq_capture`, `rout`, `day_limit` | win conditions; with a day limit, most properties wins |
-| `factions[]` | `name`, `view.row/color/flip` | one per seat; `row` picks the colour row in the tile sheet |
+| `factions[]` | `name`, `view.row/color/flip` | one per seat; `row` picks the colour row in the tile sheet. Nothing else is allowed: no per-army bonuses |
 | `terrains[]` | `id`, `glyph`, `defense`, `move_cost{type: cost}`, `capturable`, `hq`, `income`, `builds[]`, `repairs[]`, `view` | a missing movement type cannot enter |
 | `units[]` | `id`, `class`, `move_type`, `moves`, `cost`, `range[min,max]`, `can_capture`, `flying`, `damage{unit: %}`, `view.tile` | range over 1 means it cannot move and fire in one turn |
 
@@ -92,8 +95,16 @@ defender health/10)%.
 A map is JSON: `name`, `width`, `height`, `players`, `tiles` (rows of terrain glyphs),
 `owned` (`{x, y, player}` for starting property), `units` (`{type, x, y, player}`),
 and optionally `start_funds` and `rules` (a URL for its rule set, relative to the map).
-Load one with `?map=https://…/my-map.json`, the **Load from URL** button, or a file.
-Published maps appear in everyone's map list.
+To play a specific map, open the game with `?map=<url of the map JSON>` (add `&host` to
+host it online), or use **Add map from URL** on the setup screen. The setup screen
+shows a shareable link for any map that lives at a URL. The host must allow
+cross-origin requests (GitHub raw files and Pages do). Published maps appear in
+everyone's map list.
+
+## Licence
+
+OpenTactics is free software under the GNU General Public License, version 3 or
+later (see `LICENSE`). The bundled art, fonts and sounds keep their own licences.
 
 ## Credits
 

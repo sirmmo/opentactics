@@ -1,5 +1,7 @@
-// Map editor: paint terrain, owners and units; mirror strokes so both sides
-// stay fair; save in the browser, download, publish to the server, or test.
+// Map editor: paint terrain, owners and units (optionally mirroring strokes as a
+// drawing aid); save in the browser, download, publish to the server, or test.
+// Maps only set the ground and the starting positions: every player always plays
+// by the same rules, so there is nothing per-player to configure here.
 
 import { T, drawTile, drawUnit, terrainLayer, mapToBoard, factionColor } from './art.js';
 import { h } from './game.js';
@@ -24,7 +26,7 @@ export class Editor {
     this.map = map ? structuredClone(map) : this.blank(20, 14, 2);
     this.tool = { kind: 'terrain', terrain: rules.terrains.findIndex(t => t.glyph === '.') };
     this.owner = -1;
-    this.mirror = 'rot180';
+    this.mirror = 'none';
     this.scale = 2;
     this.undo = [];
     this.alive = true;
@@ -62,11 +64,11 @@ export class Editor {
     const applySize = () => this.resize(+this.wIn.value, +this.hIn.value, +this.pIn.value);
     this.wIn.onchange = this.hIn.onchange = this.pIn.onchange = applySize;
     this.mirrorSel = h('select', { onchange: () => { this.mirror = this.mirrorSel.value; } },
-      h('option', { value: 'none' }, 'No mirroring'),
-      h('option', { value: 'rot180', selected: true }, 'Rotate 180° (2 players)'),
-      h('option', { value: 'flipx' }, 'Mirror left ↔ right'),
-      h('option', { value: 'flipy' }, 'Mirror top ↕ bottom'),
-      h('option', { value: 'quad' }, 'Four corners (4 players)'));
+      h('option', { value: 'none', selected: true }, 'Paint freely'),
+      h('option', { value: 'rot180' }, 'Also paint rotated 180°'),
+      h('option', { value: 'flipx' }, 'Also paint mirrored left ↔ right'),
+      h('option', { value: 'flipy' }, 'Also paint mirrored top ↕ bottom'),
+      h('option', { value: 'quad' }, 'Also paint in all four corners'));
     this.ownerSel = h('div', { class: 'owners' });
     this.terrainPal = h('div', { class: 'palette' });
     this.unitPal = h('div', { class: 'palette' });
@@ -96,7 +98,7 @@ export class Editor {
         h('h3', {}, 'Terrain'), this.terrainPal,
         h('h3', {}, 'Owner of buildings'), this.ownerSel,
         h('h3', {}, 'Units'), this.unitPal,
-        h('p', { class: 'muted small' }, 'Left button paints, right button erases units. Pick a unit, then click; mirrored copies go to the matching player.'))));
+        h('p', { class: 'muted small' }, 'Left button paints, right button erases units. Pick a unit, then click. Maps can be any shape; the mirror options are only a drawing aid.'))));
 
     let painting = false;
     const tileAt = e => {
