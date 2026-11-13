@@ -715,7 +715,7 @@ export class Match {
             u.x = ex; u.y = ey; u.moved = true;
             break;
           }
-          sound.play('move');
+          sound.sfx(sound.moveVoice(this.rules.units[u.kind]));
           const start = performance.now(), dur = steps * speed;
           await new Promise(done => {
             const step = () => {
@@ -740,7 +740,7 @@ export class Match {
           if (a) {
             const dir = [Math.sign(d.x - a.x), Math.sign(d.y - a.y)];
             if (!ranged && !calm() && !this.instantNow) await this.lunge(a, dir, fast ? 140 : 200);
-            sound.play('attack');
+            sound.sfx(sound.voiceOf(this.rules.units[a.kind]));
             this.effect({ kind: 'flash', at: [a.x, a.y], dir, dur: 140 });
             const travel = ranged ? (fast ? 380 : 520) : (fast ? 150 : 200);
             this.effect({ kind: ranged ? 'shell' : flying ? 'missile' : 'shot', from: [a.x, a.y], to: [d.x, d.y], dur: travel, color: factionColor(this.rules, a.player) });
@@ -900,7 +900,7 @@ export class Match {
           break;
         }
         case 'destroy': {
-          sound.play('destroy');
+          sound.sfx('explosion');
           this.effect({ kind: 'boom', at: [ev.x, ev.y], dur: 650 });
           this.effect({ kind: 'smoke', at: [ev.x, ev.y], dur: 1400 });
           this.shake(0.9, 380);
@@ -1254,6 +1254,11 @@ export class Match {
       speedBtn.textContent = `Other players' moves: ${speeds.find(([v]) => v === next)[1]}`;
     } }, `Other players' moves: ${speeds.find(([v]) => v === Match.speed)?.[1] || 'Normal'}`);
     items.push(speedBtn);
+    const musicBtn = h('button', { onclick: () => {
+      sound.setMusic(!sound.musicEnabled());
+      musicBtn.textContent = `Music: ${sound.musicEnabled() ? 'on' : 'off'}`;
+    } }, `Music: ${sound.musicEnabled() ? 'on' : 'off'}`);
+    items.push(musicBtn);
     fill(this.menuEl, ...items, h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
     this.menuEl.classList.toggle('hidden');
   }
@@ -1382,6 +1387,7 @@ export class Match {
       }
     }
     ctx.drawImage(this.layer, 0, 0, s.width * size, s.height * size);
+    this.drawWater(ctx, s, size, now);
 
     const shade = (set, fill, stroke) => {
       if (!set) return;
@@ -1456,7 +1462,9 @@ export class Match {
         else { const k = Math.sin(Math.PI * t) * 0.3; x += lg.dir[0] * k; y += lg.dir[1] * k; }
       }
       if (u.dived) ctx.globalAlpha = 0.5;
-      drawUnit(ctx, r, u.kind, u.player, x * size, y * size, size, u.moved && actNow.includes(u.player));
+      // Units that can still act this turn breathe a little.
+      const bob = !u.moved && actNow.includes(u.player) && !calm() ? Math.round(Math.sin(now / 380 + u.id) * this.scale * 0.5) : 0;
+      drawUnit(ctx, r, u.kind, u.player, x * size, y * size + bob, size, u.moved && actNow.includes(u.player));
       ctx.globalAlpha = 1;
       const hp = Math.ceil(u.hp / 10);
       if (hp < 10) drawTile(ctx, 180 + hp, x * size + size / 2, y * size + size / 2, size / 2);
@@ -1577,6 +1585,69 @@ export class Match {
         ctx.globalAlpha = 1;
       }
     }
+    this.drawWeather(ctx, s, size, now);
+    ctx.restore();
+  }
+
+  /** Little glints that drift across visible water. */
+  drawWater(ctx, s, size, now) {
+    if (calm()) return;
+    if (!this.waterTiles || this.waterFor !== s.terrain) {
+      this.waterFor = s.terrain;
+      this.waterTiles = [];
+      for (let i = 0; i < s.terrain.length; i++) if (this.rules.terrains[s.terrain[i]].view?.base === 'water') this.waterTiles.push(i);
+    }
+    const sc = this.scroller, x0 = (sc.scrollLeft - this.canvas.offsetLeft) / size - 1, y0 = (sc.scrollTop - this.canvas.offsetTop) / size - 1;
+    const x1 = x0 + sc.clientWidth / size + 2, y1 = y0 + sc.clientHeight / size + 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    const px = this.scale;
+    for (const i of this.waterTiles) {
+      const x = i % s.width, y = Math.floor(i / s.width);
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      const phase = (now / 1800 + ((x * 7 + y * 13) % 10) / 10) % 1;
+      if (phase > 0.5) continue;
+      const k = phase * 2;
+      ctx.globalAlpha = Math.sin(k * Math.PI) * 0.6;
+      ctx.fillRect(x * size + ((x * 5 + y * 3) % 10 + 2) * px + k * 3 * px, y * size + ((x * 3 + y * 7) % 11 + 2) * px, 3 * px, px);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Rain or snow falling over the board. */
+  drawWeather(ctx, s, size, now) {
+    const w = this.rules.weather?.[s.weather];
+    if (!w || !s.weather || calm()) return;
+    const sc = this.scroller;
+    const vx = sc.scrollLeft - this.canvas.offsetLeft, vy = sc.scrollTop - this.canvas.offsetTop;
+    const W = sc.clientWidth, H = sc.clientHeight;
+    const snow = w.id === 'snow';
+    const n = Math.round(W * H / (snow ? 2200 : 3000));
+    ctx.save();
+    ctx.translate(vx, vy);
+    ctx.fillStyle = snow ? 'rgba(255,255,255,0.9)' : 'rgba(190,215,255,0.55)';
+    ctx.strokeStyle = 'rgba(190,215,255,0.55)';
+    ctx.lineWidth = Math.max(1, this.scale / 2);
+    for (let i = 0; i < n; i++) {
+      const seed = (i * 9301 + 49297) % 233280 / 233280, seed2 = (i * 4093 + 7) % 1000 / 1000;
+      if (snow) {
+        const t = (now / 9000 + seed) % 1;
+        const x = ((seed2 * W + Math.sin(now / 900 + i) * 12) % W + W) % W, y = t * H;
+        const r = (1.5 + (i % 3)) * this.scale * 0.7;
+        ctx.fillStyle = 'rgba(120,140,170,0.5)';
+        ctx.fillRect(x + 1, y + 1, r, r);
+        ctx.fillStyle = 'rgba(255,255,255,0.95)';
+        ctx.fillRect(x, y, r, r);
+      } else {
+        const t = (now / 700 + seed) % 1;
+        const x = (seed2 * W + t * 60) % W, y = t * H;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + 4 * this.scale, y + 12 * this.scale);
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = snow ? 'rgba(255,255,255,0.08)' : 'rgba(40,60,110,0.12)';
+    ctx.fillRect(0, 0, W, H);
     ctx.restore();
   }
 
