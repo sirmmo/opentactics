@@ -169,6 +169,10 @@ pub struct Terrain {
     /// With fog of war, extra tiles seen by units standing here, by movement type.
     #[serde(default)]
     pub vision_bonus: BTreeMap<String, u32>,
+    /// Each one of these a player owns makes all their units deal this much more
+    /// damage, in percent (a comms tower, say). Anyone can capture it.
+    #[serde(default)]
+    pub attack_bonus: u32,
     /// How the client draws it. The engine ignores this.
     #[serde(default)]
     pub view: Value,

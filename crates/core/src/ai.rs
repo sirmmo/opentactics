@@ -8,7 +8,7 @@
 //!
 //! A `Profile` sets how well it plays (`Level`) and what it likes doing (`Style`).
 
-use crate::game::{Action, Drop, Game, Reach, Then, Unit, UNREACHABLE};
+use crate::game::{Action, Drop, Game, Mode, Offer, Pact, Reach, Then, Unit, UNREACHABLE};
 use crate::rules::Effect;
 use serde::{Deserialize, Serialize};
 
@@ -80,6 +80,10 @@ pub fn next_action_for(real: &Game, me: usize, p: &Profile) -> Action {
     } else {
         real
     };
+    // Answer diplomatic offers first.
+    if let Some(o) = real.s.offers.iter().find(|o| o.to == me) {
+        return answer(real, me, o);
+    }
     if let Some(a) = power_action(g, me, p) {
         return a;
     }
@@ -110,6 +114,26 @@ pub fn next_action_for(real: &Game, me: usize, p: &Profile) -> Action {
         return unit_action(g, unit, p, danger.as_ref());
     }
     build_action(g, me, p).unwrap_or(Action::EndTurn)
+}
+
+/// Accept a truce or alliance when there are more than two sides and neither
+/// of us is running away with the game.
+fn answer(g: &Game, me: usize, o: &Offer) -> Action {
+    let alive: Vec<usize> = (0..g.s.players.len()).filter(|p| g.s.players[*p].alive).collect();
+    let mut teams: Vec<usize> = alive.iter().map(|p| g.team(*p)).collect();
+    teams.sort_unstable();
+    teams.dedup();
+    let leader = alive.iter().copied().max_by_key(|p| g.score(*p));
+    let crowded = teams.len() > 2;
+    let ok = match o.pact {
+        Pact::Truce { .. } => crowded,
+        Pact::Alliance => crowded && leader != Some(o.from) && leader != Some(me),
+    };
+    if ok {
+        Action::Accept { from: o.from }
+    } else {
+        Action::Decline { from: o.from }
+    }
 }
 
 /// A small, steady pseudo-random number for the easy level's mistakes.
@@ -285,10 +309,23 @@ fn scored_action(g: &Game, unit: &Unit, p: &Profile, danger: Option<&Danger>) ->
             }
             let terrain = g.terrain(x, y);
             let cover = if def.flying { 0 } else { terrain.defense as i64 * 20 };
-            let risk = danger.map_or(0, |d| d.cost(g, unit, x, y) / 60);
+            // The storm hurts: stay out of it.
+            let storm = if g.in_storm(x, y) { 3000 } else { 0 };
+            let risk = danger.map_or(0, |d| d.cost(g, unit, x, y) / 60) + storm;
+
+            // King of the hill: stand on it, or knock an enemy off it.
+            if g.s.hill == Some([x, y]) && !def.flying {
+                let mut score = 6000;
+                if let Some([t, n]) = g.s.hold {
+                    if t as usize != g.team(me) {
+                        score += 3000 * n as i64;
+                    }
+                }
+                consider(score - risk + wobble(x, y), x, y, Then::Wait);
+            }
 
             if g.can_capture(unit, x, y) {
-                let mut score = 4000 + unit.health() as i64 * 100 + terrain.income as i64 / 10;
+                let mut score = 4000 + unit.health() as i64 * 100 + terrain.income as i64 / 10 + terrain.attack_bonus as i64 * 150;
                 if terrain.hq {
                     score += 20000;
                 }
@@ -458,6 +495,17 @@ fn advance(g: &Game, unit: &Unit, p: &Profile, danger: Option<&Danger>) -> (i32,
     let plan = g.search(unit.kind, unit.player, unit.x, unit.y, UNREACHABLE - 1, true);
 
     let mut goal: Option<(u32, i32, i32)> = None;
+    // Caught in the storm: head for the middle.
+    if g.in_storm(unit.x, unit.y) {
+        let (cx, cy) = (g.s.width / 2, g.s.height / 2);
+        offer(&mut goal, nearest_approach(g, &plan, cx, cy).min(UNREACHABLE - 1), cx, cy);
+    }
+    // King of the hill: half the army heads for the hill.
+    if let (Mode::KingOfTheHill { .. }, Some([hx, hy])) = (&g.s.options.mode, g.s.hill) {
+        if goal.is_none() && !def.flying && unit.id % 2 == 0 {
+            offer(&mut goal, nearest_approach(g, &plan, hx, hy), hx, hy);
+        }
+    }
     // Out of fuel or ammunition: go home (or to a carrier) first.
     if low_supply(g, unit) {
         for y in 0..g.s.height {
@@ -584,6 +632,9 @@ fn toward(g: &Game, unit: &Unit, plan: &Reach, reach: &Reach, gx: i32, gy: i32, 
             continue;
         }
         if reach.cost(x, y) == UNREACHABLE || !g.can_stop(unit, x, y) {
+            continue;
+        }
+        if g.in_storm(x, y) && !g.in_storm(unit.x, unit.y) {
             continue;
         }
         // Do not park on a friendly factory: it could not build.

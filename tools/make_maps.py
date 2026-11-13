@@ -133,7 +133,7 @@ maps["salt-flats"] = G("Salt Flats", "Open ground and a salt lake. Little cover 
 maps["archipelago"] = G("Archipelago", "Two islands and a strait. Ships and aircraft decide it.", 26, 18, 2, 47,
     base_angle=LEFT, base_r=0.7, water=("island", "rivers"), coast=0.92, river_w=3.2, river_from=0.0,
     mountains=0.72, forests=0.6, cities=[(0.45, 0.6), (0.3, 0.75)], airports=[(0.5, 0.0)],
-    ports=[(0.3, 0.0)], ring=0.3)
+    ports=[(0.3, 0.0)], ring=0.3, beaches=True, reefs=True)
 
 maps["triad"] = G("Triad", "Three armies on one round island.", 24, 24, 3, 7,
     base_angle=TOP, base_r=0.68, water=("island",), coast=0.92, mountains=0.7, forests=0.6, ring=0.32,
@@ -154,7 +154,7 @@ maps["four-lakes"] = G("Four Lakes", "Four corners, a lake between each pair of 
 maps["atoll"] = G("Atoll", "A ring of land around a lagoon. Four ports, four airfields.", 28, 28, 4, 29,
     base_angle=TOPLEFT, base_r=0.72, water=("island", "lake"), coast=0.95, lake=0.3,
     mountains=0.74, forests=0.6, ring=0.55, spokes=True, hub=0.55,
-    cities=[(0.65, 0.6), (0.5, 0.0)], airports=[(0.75, 0.6)], ports=[(0.4, 0.0)])
+    cities=[(0.65, 0.6), (0.5, 0.0)], airports=[(0.75, 0.6)], ports=[(0.4, 0.0)], beaches=True, reefs=True)
 
 maps["hexfall"] = G("Hexfall", "Six armies on a big island. Alliances will not last.", 32, 32, 6, 37,
     base_angle=TOP, base_r=0.74, water=("island",), coast=0.93, mountains=0.72, forests=0.6, ring=0.36,
@@ -173,7 +173,8 @@ maps["wide-front"] = G("Wide Front", "A long front cut by a river, with bridges 
     mountains=0.74, forests=0.58, cities=[(0.6, 0.6), (0.4, 0.0), (0.25, 0.7)], factories=[(0.5, 0.0)])
 maps["island-hop"] = G("Island Hop", "Two islands around a lagoon. Ports and airfields decide it.", 30, 22, 2, 61,
     base_angle=LEFT, base_r=0.72, water=("island", "lake"), coast=0.9, lake=0.22, ring=0.4,
-    mountains=0.74, forests=0.6, cities=[(0.6, 0.6), (0.35, 0.8)], ports=[(0.4, 0.6)], airports=[(0.5, 0.0)])
+    mountains=0.74, forests=0.6, cities=[(0.6, 0.6), (0.35, 0.8)], ports=[(0.4, 0.6)], airports=[(0.5, 0.0)],
+    beaches=True, reefs=True)
 maps["highlands"] = G("Highlands", "Mountain country: infantry and artillery rule here.", 24, 24, 2, 67,
     base_angle=TOPLEFT, base_r=0.8, mountains=0.58, forests=0.55, ring=0.3,
     cities=[(0.5, 0.5), (0.3, 0.0)], factories=[(0.45, 0.0)])
@@ -186,10 +187,11 @@ maps["plains-of-four"] = G("Plains of Four", "Four armies on open ground. Quick 
     base_angle=TOPLEFT, base_r=0.8, mountains=0.78, forests=0.62, ring=0.3, cities=[(0.4, 0.5)])
 maps["quad-islands"] = G("Quad Islands", "Four islands split by straits.", 32, 32, 4, 83,
     base_angle=TOPLEFT, base_r=0.7, water=("island", "rivers"), coast=0.93, river_w=2.5, river_from=0.0, ring=0.3,
-    mountains=0.72, forests=0.6, cities=[(0.6, 0.5), (0.35, 0.0)], ports=[(0.45, 0.5)], airports=[(0.5, 0.0)])
+    mountains=0.72, forests=0.6, cities=[(0.6, 0.5), (0.35, 0.0)], ports=[(0.45, 0.5)], airports=[(0.5, 0.0)],
+    beaches=True, reefs=True, towers=[(0.22, 0.0)])
 maps["big-cross"] = G("Big Cross", "A large four-way war with a ring road.", 40, 40, 4, 89,
     base_angle=TOPLEFT, base_r=0.82, ring=0.45, mountains=0.7, forests=0.58,
-    cities=[(0.6, 0.6), (0.45, 0.0), (0.3, 0.5)], factories=[(0.35, 0.0)])
+    cities=[(0.6, 0.6), (0.45, 0.0), (0.3, 0.5)], factories=[(0.35, 0.0)], towers=[(0.15, 0.0)])
 maps["pentagon"] = G("Pentagon", "Five armies on an island.", 32, 32, 5, 97,
     base_angle=TOP, base_r=0.76, water=("island",), coast=0.93, ring=0.38, mountains=0.72, forests=0.6,
     cities=[(0.5, 0.5), (0.28, 0.0)], factories=[(0.2, 0.0)])
@@ -201,10 +203,11 @@ maps["hex-isles"] = G("Hex Isles", "Six islands around a shared middle.", 36, 36
     mountains=0.72, forests=0.6, cities=[(0.5, 0.4), (0.3, 0.0)], ports=[(0.55, 0.6)])
 maps["octagon-lake"] = G("Octagon Lake", "Eight armies around a big lake.", 48, 48, 8, 107,
     base_angle=OCT, base_r=0.82, water=("lake",), lake=0.22, ring=0.45, mountains=0.72, forests=0.6,
-    cities=[(0.6, 0.0), (0.35, 0.0)], factories=[(0.3, 0.0)])
+    cities=[(0.6, 0.0), (0.35, 0.0)], factories=[(0.3, 0.0)], towers=[(0.47, 0.0)])
 maps["eight-isles"] = G("Eight Isles", "Eight islands joined by bridges.", 44, 44, 8, 109,
     base_angle=OCT, base_r=0.78, water=("island", "rivers"), coast=0.94, river_w=2.0, river_from=0.4, ring=0.5,
-    mountains=0.72, forests=0.6, cities=[(0.55, 0.0), (0.35, 0.0)], ports=[(0.6, 0.6)], airports=[(0.3, 0.0)])
+    mountains=0.72, forests=0.6, cities=[(0.55, 0.0), (0.35, 0.0)], ports=[(0.6, 0.6)], airports=[(0.3, 0.0)],
+    beaches=True, reefs=True)
 maps["nine-lands"] = G("Nine Lands", "Nine armies. Watch your neighbours.", 48, 48, 9, 113,
     base_angle=TOP, base_r=0.8, ring=0.45, mountains=0.72, forests=0.6, cities=[(0.6, 0.0), (0.35, 0.0)])
 maps["decagon"] = G("Decagon", "Ten armies on one island.", 52, 52, 10, 127,
@@ -220,7 +223,7 @@ maps["sixteen-banners"] = G("Sixteen Banners", "Sixteen armies. The biggest war 
     base_angle=TOP, base_r=0.86, ring=0.55, mountains=0.74, forests=0.6, cities=[(0.66, 0.0), (0.42, 0.0)])
 maps["grand-ring"] = G("Grand Ring", "Sixteen armies on a ring of land around an inland sea.", 64, 64, 16, 149,
     base_angle=TOP, base_r=0.84, water=("island", "lake"), coast=0.97, lake=0.3, ring=0.6, mountains=0.74, forests=0.6,
-    cities=[(0.7, 0.0), (0.5, 0.0)], ports=[(0.4, 0.0)])
+    cities=[(0.7, 0.0), (0.5, 0.0)], ports=[(0.4, 0.0)], reefs=True, towers=[(0.6, 0.0)])
 
 for id, m in maps.items():
     if m["author"] == "OpenTactics":

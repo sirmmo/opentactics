@@ -503,7 +503,21 @@ async function setup(mode, preset = {}) {
     const box = (k, label, hint) => h('label', { class: 'opt', title: hint },
       h('input', { type: 'checkbox', checked: o[k], onchange: e => { o[k] = e.target.checked; sendLobby(); } }), h('span', {}, label, h('small', {}, hint)));
     const items = [];
-    if ((cfg.map?.players || 0) >= 3) items.push(box('simultaneous', 'Far players move at once', 'Players who cannot reach each other this round take their turns at the same time (teammates too). Everyone still plays once a day.'));
+    const players = cfg.map?.players || 0;
+    o.mode ||= 'standard';
+    const modeSel = h('select', { onchange: e => { o.mode = e.target.value; sendLobby(); renderOptions(); } },
+      ...[['standard', 'Standard'], ['king_of_the_hill', 'King of the hill'], ['battle_royale', 'Battle royale'], ['survival', 'Survival (co-op)'], ['score_race', 'Score race']]
+        .map(([v, l]) => h('option', { value: v, selected: o.mode === v }, l)));
+    const modeHelp = {
+      standard: 'Take the enemy headquarters or wipe out their army.',
+      king_of_the_hill: 'Also: hold the marked middle tile at the start of 3 days in a row.',
+      battle_royale: 'From day 5 a storm closes in on the middle and hurts units outside it.',
+      survival: 'Everyone not played by the computer is one team. The computer gets free waves of units; last until day 15.',
+      score_race: 'After 20 days the side with the most property wins.',
+    }[o.mode];
+    items.push(h('label', { class: 'opt' }, h('span', {}, 'Game mode', h('small', {}, modeHelp)), modeSel));
+    if (players >= 3) items.push(box('diplomacy', 'Diplomacy', 'Offer alliances (shared vision, win together) and truces during the game.'));
+    if (players >= 3) items.push(box('simultaneous', 'Far players move at once', 'Players who cannot reach each other this round take their turns at the same time (teammates too). Everyone still plays once a day.'));
     items.push(
       box('fog', 'Fog of war', 'You only see what your units and property see.'),
       box('supply', 'Fuel and ammo', 'Units run out; aircraft and ships are lost with empty tanks. Refill at your property or next to a carrier.'));
@@ -601,6 +615,8 @@ async function setup(mode, preset = {}) {
 
   function optionsText() {
     const o = cfg.options, list = [];
+    if (o.mode && o.mode !== 'standard') list.push(o.mode.replace(/_/g, ' '));
+    if (o.diplomacy) list.push('diplomacy');
     if (o.simultaneous) list.push('far players moving at once');
     if (o.fog) list.push('fog of war');
     if (o.supply) list.push('fuel and ammo');
@@ -660,15 +676,23 @@ async function setup(mode, preset = {}) {
       const now = Date.now();
       if (now - guest.lastChat < 700) return;
       guest.lastChat = now;
-      broadcastChat(guest.name, cfg.seats.findIndex(s => s.token === guest.token), String(msg.text || '').slice(0, 200));
+      broadcastChat(guest.name, cfg.seats.findIndex(s => s.token === guest.token), String(msg.text || '').slice(0, 200), Number.isInteger(msg.to) ? msg.to : null);
     }
   }
 
-  function broadcastChat(name, seat, text) {
+  /** Send a chat line to everyone, or privately to the seat `to` (and back to its sender). */
+  function broadcastChat(name, seat, text, to = null) {
     text = text.trim();
     if (!text || !room) return;
-    for (const g of room.guests.values()) if (g.conn.open) g.conn.send({ t: 'chat', name, seat, text });
-    match?.showChat(name, seat, text);
+    const whisper = to != null;
+    for (const g of room.guests.values()) {
+      if (!g.conn.open) continue;
+      const gseat = cfg.seats.findIndex(st => st.token === g.token);
+      if (whisper && gseat !== to && gseat !== seat) continue;
+      g.conn.send({ t: 'chat', name, seat, text, whisper });
+    }
+    const hostSeat = cfg.seats.findIndex(st => st.kind === 'local');
+    if (!whisper || to === hostSeat || seat === hostSeat) match?.showChat(name, seat, text, whisper);
   }
 
   // ---- turn timer (host) ----
@@ -744,7 +768,15 @@ async function setup(mode, preset = {}) {
     const teamed = cfg.seats.some(st => st.team != null);
     const teams = teamed ? cfg.seats.map((st, i) => st.team ?? 100 + i) : [];
     if (teamed && new Set(teams).size < 2) return showError(new Error('Everyone is on one team: there would be nobody to fight.'));
-    const options = { ...cfg.options, teams };
+    const { mode: modeName, ...rest } = cfg.options;
+    let mode = { type: modeName || 'standard' };
+    if (modeName === 'survival') {
+      const invaders = cfg.seats.map((st, i) => (st.kind === 'ai' ? i : -1)).filter(i => i >= 0);
+      if (!invaders.length || invaders.length === cfg.seats.length) return showError(new Error('Survival needs at least one computer seat (the invaders) and one person.'));
+      mode.invaders = invaders;
+    }
+    if (modeName === 'survival' && teamed) return showError(new Error('Survival makes its own teams: clear the team choices.'));
+    const options = { ...rest, mode, teams };
     let res;
     try {
       res = resume
@@ -773,7 +805,7 @@ async function setup(mode, preset = {}) {
     app.replaceChildren(root);
     match = new Match(root, {
       engine, rules: cfg.rules, state: res.state, income: res.income, seats, driver: true, menu: menuItems, onWatch: watchReplay,
-      chat: mode === 'host' ? text => broadcastChat(myName(), cfg.seats.findIndex(st => st.kind === 'local'), text) : undefined,
+      chat: mode === 'host' ? (text, to) => broadcastChat(myName(), cfg.seats.findIndex(st => st.kind === 'local'), text, to) : undefined,
       onApplied: (player, action, state, hash) => {
         if (mode !== 'host') return;
         for (const g of room?.guests.values() || []) if (g.conn.open) g.conn.send({ t: 'act', player, action, h: hash });
@@ -920,7 +952,7 @@ function onHostMessage(msg, lobbyEl, statusEl) {
           { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game?')) menu(); } },
         ],
         send: (player, action) => guestLink.conn.send({ t: 'act', action }),
-        chat: text => guestLink?.conn.open && guestLink.conn.send({ t: 'chat', text }),
+        chat: (text, to) => guestLink?.conn.open && guestLink.conn.send({ t: 'chat', text, to }),
         onDesync: () => { match.setNet('Out of step with the host; fetching the game again…'); guestLink.conn.send({ t: 'resync' }); },
       });
       match.income = res.income;
@@ -932,7 +964,7 @@ function onHostMessage(msg, lobbyEl, statusEl) {
   } else if (msg.t === 'act' && match) {
     match.commit(msg.player, msg.action, { hash: msg.h, mine: match.seats[msg.player]?.local });
   } else if (msg.t === 'chat' && match) {
-    match.showChat(String(msg.name || '?').slice(0, 20), Number.isInteger(msg.seat) ? msg.seat : -1, String(msg.text || '').slice(0, 200));
+    match.showChat(String(msg.name || '?').slice(0, 20), Number.isInteger(msg.seat) ? msg.seat : -1, String(msg.text || '').slice(0, 200), !!msg.whisper);
   } else if (msg.t === 'timer' && match) {
     match.setTimer(msg.turn, msg.left);
   } else if (msg.t === 'refused' && match) {

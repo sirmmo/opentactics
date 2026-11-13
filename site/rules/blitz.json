@@ -83,7 +83,19 @@
       "income": 1000,
       "repairs": ["ground"],
       "move_cost": { "foot": 1, "boots": 1, "treads": 1, "tires": 1, "air": 1 },
-      "view": { "base": "grass", "building": 9 } }
+      "view": { "base": "grass", "building": 9 } },
+    { "id": "tower", "name": "Comms tower", "glyph": "T", "defense": 3, "capturable": true, "income": 0, "attack_bonus": 10,
+      "description": "Each one you hold makes all your units deal 10% more damage.",
+      "move_cost": { "foot": 1, "boots": 1, "treads": 1, "tires": 1, "air": 1 },
+      "view": { "base": "grass", "building": 13 } },
+    { "id": "beach", "name": "Beach", "glyph": "s", "defense": 0,
+      "description": "Ships can come ashore here, so landers can land troops.",
+      "move_cost": { "foot": 1, "boots": 1, "treads": 1, "tires": 1, "air": 1, "ship": 1 },
+      "view": { "base": "sand" } },
+    { "id": "reef", "name": "Reef", "glyph": "r", "defense": 2, "hides": true,
+      "description": "Rocks: slow and good cover for ships, which hide here in fog of war.",
+      "move_cost": { "air": 1, "ship": 2 },
+      "view": { "base": "water", "reef": true } }
   ],
   "units": [
     { "id": "infantry", "name": "Infantry", "class": "ground", "move_type": "foot", "moves": 3, "cost": 1000,

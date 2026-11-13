@@ -155,7 +155,7 @@ fn ai_plays_every_map_to_the_end() {
 
 #[test]
 fn ai_plays_every_map_with_every_option() {
-    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true };
+    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard };
     ai_plays_all(options);
 }
 
@@ -476,7 +476,7 @@ fn hard_beats_easy_and_every_style_plays() {
     }
     assert!(hard_wins * 3 >= games * 2, "hard won only {hard_wins} of {games}");
     // Every style finishes games, with every option on.
-    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true };
+    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard };
     for style in [Style::Rusher, Style::Turtle, Style::Economist] {
         let p = Profile { level: Level::Normal, style };
         for (_, text) in two.iter().take(3) {
@@ -564,4 +564,158 @@ fn far_players_take_their_turns_together() {
     // Without the option, one at a time.
     let one = Game::new(rules(), &map(&text), 1).unwrap();
     assert_eq!(one.s.active, vec![0]);
+}
+
+// ---- game modes, diplomacy, towers ----------------------------------------
+
+use opentactics_core::{Mode, Pact};
+
+const FIELD: &str = r#"{
+  "name": "Field", "width": 9, "height": 7, "players": 3,
+  "tiles": ["H.......H", ".........", ".........", ".........", ".........", ".........", "....H...."],
+  "owned": [{"x":0,"y":0,"player":0},{"x":8,"y":0,"player":1},{"x":4,"y":6,"player":2}],
+  "units": [
+    {"type":"infantry","x":1,"y":1,"player":0},
+    {"type":"infantry","x":7,"y":1,"player":1},
+    {"type":"tank","x":4,"y":5,"player":2}
+  ]
+}"#;
+
+fn end_round(g: &mut Game) {
+    for p in g.s.active.clone() {
+        if !g.s.over {
+            g.apply(p, &Action::EndTurn).unwrap();
+        }
+    }
+}
+
+#[test]
+fn king_of_the_hill_is_won_by_holding_the_middle() {
+    let mut g = setup_game(FIELD, Options { mode: Mode::KingOfTheHill { days: 2 }, ..Default::default() });
+    let [hx, hy] = g.s.hill.unwrap();
+    assert_eq!((hx, hy), (4, 3));
+    let tank = unit_on(&g, 4, 5);
+    while g.s.turn != 2 {
+        end_round(&mut g);
+    }
+    g.apply(2, &Action::Move { unit: tank, x: 4, y: 3, then: Then::Wait }).unwrap();
+    while !g.s.over {
+        end_round(&mut g);
+    }
+    assert_eq!(g.s.winner, Some(2));
+    assert!(g.s.day <= 4);
+}
+
+#[test]
+fn the_storm_closes_in_and_hurts() {
+    let mut g = setup_game(FIELD, Options { mode: Mode::BattleRoyale { start: 2, every: 1, damage: 3 }, ..Default::default() });
+    let inf = unit_on(&g, 1, 1);
+    assert!(g.s.storm.is_none());
+    while g.s.day < 5 {
+        end_round(&mut g);
+    }
+    assert!(g.s.storm.is_some());
+    assert!(g.in_storm(0, 0), "the corners are outside");
+    assert!(!g.in_storm(4, 3), "the middle is safe");
+    // By day 5 the circle has shrunk past the infantry near the corner.
+    let hp = g.unit(inf).map_or(0, |u| u.hp);
+    assert!(hp < 100, "{hp}");
+}
+
+#[test]
+fn survival_sends_waves_and_is_won_by_lasting() {
+    let mut g = setup_game(FIELD, Options { mode: Mode::Survival { days: 4, every: 1, invaders: vec![2] }, ..Default::default() });
+    assert!(g.allied(0, 1), "defenders are one team");
+    assert!(!g.allied(0, 2));
+    let before = g.unit_count(2);
+    let mut spawned = false;
+    while !g.s.over {
+        let p = g.s.turn;
+        let ev = g.apply(p, &Action::EndTurn).unwrap();
+        spawned |= ev.iter().any(|e| matches!(e, Event::Spawn { .. }));
+    }
+    assert!(spawned && g.unit_count(2) > before);
+    assert_eq!(g.s.winners, vec![0, 1]);
+}
+
+#[test]
+fn score_race_ends_on_its_day() {
+    let mut g = setup_game(FIELD, Options { mode: Mode::ScoreRace { days: 2 }, ..Default::default() });
+    while !g.s.over {
+        end_round(&mut g);
+    }
+    assert_eq!(g.s.day, 3);
+}
+
+#[test]
+fn diplomacy_makes_allies_and_truces() {
+    let mut g = setup_game(FIELD, Options { diplomacy: true, ..Default::default() });
+    // Out of turn is fine for diplomacy.
+    g.apply(1, &Action::Offer { to: 0, pact: Pact::Truce { days: 2 } }).unwrap();
+    g.apply(0, &Action::Accept { from: 1 }).unwrap();
+    assert!(g.at_peace(0, 1));
+    let a = unit_on(&g, 1, 1);
+    let b = unit_on(&g, 7, 1);
+    g.s.units.iter_mut().find(|u| u.id == a).unwrap().x = 6;
+    assert!(g.targets(g.unit(a).unwrap(), 6, 1).iter().all(|t| t.unit != b), "no attacks during a truce");
+    g.apply(2, &Action::Offer { to: 1, pact: Pact::Alliance }).unwrap();
+    g.apply(1, &Action::Accept { from: 2 }).unwrap();
+    assert!(g.allied(1, 2));
+    g.apply(1, &Action::LeaveAlliance).unwrap();
+    assert!(!g.allied(1, 2));
+    // Truces run out.
+    while g.s.day < 3 {
+        end_round(&mut g);
+    }
+    assert!(!g.at_peace(0, 1));
+    let off = setup_game(FIELD, Options::default());
+    assert!(off.clone().apply(0, &Action::Offer { to: 1, pact: Pact::Alliance }).is_err());
+}
+
+#[test]
+fn towers_boost_their_owner() {
+    let text = FIELD.replace("\"....H....\"", "\"T...H....\"").replace(
+        r#"{"x":4,"y":6,"player":2}"#,
+        r#"{"x":4,"y":6,"player":2},{"x":0,"y":6,"player":0}"#,
+    );
+    let with = setup_game(&text, Options::default());
+    let without = setup_game(FIELD, Options::default());
+    assert_eq!(with.tower_bonus(0), 10);
+    let a = unit_on(&with, 1, 1);
+    let mut w = with.clone();
+    let mut wo = without.clone();
+    for g in [&mut w, &mut wo] {
+        g.s.units.iter_mut().find(|u| u.id == a).unwrap().x = 6;
+    }
+    let t = |g: &Game| g.targets(g.unit(a).unwrap(), 6, 1)[0].min;
+    assert!(t(&w) > t(&wo), "{} > {}", t(&w), t(&wo));
+}
+
+#[test]
+fn ai_finishes_every_mode() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/maps");
+    for id in ["twin-valleys", "triad", "crossroads", "grand-melee"] {
+        let text = std::fs::read_to_string(format!("{dir}/{id}.json")).unwrap();
+        let n = map(&text).players;
+        for mode in [
+            Mode::KingOfTheHill { days: 3 },
+            Mode::BattleRoyale { start: 4, every: 2, damage: 2 },
+            Mode::Survival { days: 12, every: 2, invaders: vec![n - 1] },
+            Mode::ScoreRace { days: 15 },
+        ] {
+            let mut r = rules();
+            r.victory.day_limit = 60;
+            let options = Options { mode: mode.clone(), diplomacy: true, simultaneous: true, ..Default::default() };
+            let mut g = Game::with_setup(r, &map(&text), 5, Setup { options }).unwrap();
+            let mut steps = 0;
+            while !g.s.over {
+                let p = g.s.turn;
+                let a = ai::next_action(&g);
+                g.apply(p, &a).unwrap_or_else(|e| panic!("{id} {mode:?}: {a:?}: {e}"));
+                steps += 1;
+                assert!(steps < 200_000, "{id} {mode:?}: never ends");
+            }
+            println!("{id} {:?}: day {}, winners {:?}", std::mem::discriminant(&mode), g.s.day, g.s.winners);
+        }
+    }
 }

@@ -181,9 +181,29 @@ export function terrainLayer(rules, board, canvas = document.createElement('canv
         const id = !side && !vert ? piece[0] : side && !vert ? piece[1] : !side && vert ? piece[2] : !diag ? piece[3] : piece[4];
         quarter(ctx, id, q & 1, q >> 1, dx, dy);
       });
+    } else if (v.base === 'sand') {
+      // Sand: grass underneath, then a sandy patch with a few darker grains.
+      drawTile(ctx, 0, dx, dy);
+      ctx.fillStyle = '#ecd7a0';
+      ctx.fillRect(dx, dy, T, T);
+      const n = ((x * 73856093) ^ (y * 19349663)) >>> 0;
+      ctx.fillStyle = '#d4b878';
+      for (let k = 0; k < 5; k++) ctx.fillRect(dx + ((n >> (k * 3)) % 14) + 1, dy + ((n >> (k * 3 + 7)) % 14) + 1, 1, 1);
     } else {
       const n = ((x * 73856093) ^ (y * 19349663)) >>> 0;
       drawTile(ctx, n % 11 === 0 ? 1 : n % 13 === 0 ? 2 : 0, dx, dy);
+    }
+    if (v.reef) {
+      // Rocks breaking the water, with a little foam.
+      const n = ((x * 2654435761) ^ (y * 40503)) >>> 0;
+      for (const [rx, ry, r] of [[4 + (n % 3), 5, 3], [10, 9 + (n % 3), 2.5], [6, 11, 2]]) {
+        ctx.fillStyle = '#ffffffb0';
+        ctx.fillRect(dx + rx - r, dy + ry + r - 1, r * 2 + 1, 1);
+        ctx.fillStyle = '#5c6b78';
+        ctx.fillRect(dx + rx - r + 1, dy + ry - r + 1, r * 2 - 1, r * 2 - 1);
+        ctx.fillStyle = '#8796a3';
+        ctx.fillRect(dx + rx - r + 1, dy + ry - r + 1, r, 1);
+      }
     }
     if (v.auto === 'road') {
       const mask = (road(x, y - 1) ? 1 : 0) | (road(x + 1, y) ? 2 : 0) | (road(x, y + 1) ? 4 : 0) | (road(x - 1, y) ? 8 : 0);

@@ -15,6 +15,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const key = (x, y) => `${x},${y}`;
 const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** replaceChildren that skips null and false (the DOM would print them). */
+function fill(el, ...kids) {
+  el.replaceChildren(...kids.flat().filter(k => k != null && k !== false));
+}
+
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -97,17 +102,22 @@ export class Match {
     this.endBtn = h('button', { class: 'primary', onclick: () => this.endTurn(), title: 'End turn (E)' }, 'End turn');
     this.weatherEl = h('div', { class: 'weather hidden' });
     this.powerBtn = h('button', { class: 'power hidden', onclick: () => this.openPowers(), title: 'Powers' });
+    this.modeEl = h('div', { class: 'mode hidden' });
+    this.diploBtn = h('button', { class: 'hidden', onclick: () => this.openDiplomacy(), title: 'Alliances and truces' }, 'Diplomacy');
     this.curtain = h('div', { class: 'curtain hidden' });
     this.clockEl = h('div', { class: 'clock hidden', title: 'Time left for this turn' });
     this.chatEl = null;
     if (this.chat) {
       this.chatLog = h('ol', { class: 'chatlog' });
       const input = h('input', { maxlength: 200, placeholder: 'Say something…', enterkeyhint: 'send' });
-      const send = text => { text = text.trim(); if (text) this.chat(text); };
+      // Everyone, or one player in private.
+      this.chatTo = h('select', { class: 'chat-to', title: 'Send to' }, h('option', { value: '' }, 'All'),
+        ...this.seats.map((st, i) => (st?.ai ? null : h('option', { value: i }, this.playerName(i)))));
+      const send = text => { text = text.trim(); if (text) this.chat(text, this.chatTo.value === '' ? null : +this.chatTo.value); };
       input.addEventListener('keydown', e => { if (e.key === 'Enter') { send(input.value); input.value = ''; } });
       this.chatEl = h('div', { class: 'chat' },
         h('h3', {}, 'Chat'), this.chatLog,
-        h('div', { class: 'row' }, input, h('button', { onclick: () => { send(input.value); input.value = ''; } }, 'Send')),
+        h('div', { class: 'row' }, this.chatTo, input, h('button', { onclick: () => { send(input.value); input.value = ''; } }, 'Send')),
         h('div', { class: 'row emotes' }, ['👍', '😂', '😮', '😡', '🎉', 'GG', 'Nice!', 'Oops'].map(e => h('button', { class: 'quiet', onclick: () => send(e) }, e))));
     }
     this.soundBtn = h('button', { class: 'icon', title: 'Sound', onclick: () => { sound.setMuted(!sound.isMuted()); this.soundBtn.textContent = sound.isMuted() ? '🔇' : '🔊'; } }, sound.isMuted() ? '🔇' : '🔊');
@@ -122,7 +132,7 @@ export class Match {
     const zoomIn = h('button', { class: 'icon', title: 'Zoom in', onclick: () => this.zoom(1) }, '+');
     const zoomOut = h('button', { class: 'icon', title: 'Zoom out', onclick: () => this.zoom(-1) }, '−');
     this.root.replaceChildren(
-      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.powerBtn, this.endBtn),
+      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.diploBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
         h('div', { class: 'stage' }, this.scroller, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
         h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, this.chatEl, h('h3', {}, 'Log'), this.logEl)),
@@ -258,7 +268,7 @@ export class Match {
     const teams = o.teams?.length ? [...new Set(o.teams)] : [];
     const act = this.active();
     this.players.classList.toggle('many', s.players.length > 8);
-    this.players.replaceChildren(...s.players.map((p, i) => h('div', {
+    fill(this.players, ...s.players.map((p, i) => h('div', {
       class: `chip${act.includes(i) && !s.over ? ' active' : ''}${p.alive ? '' : ' out'}`,
       style: `--c:${factionColor(r, i)}`,
       title: `${this.playerName(i)}: ${s.units.filter(u => u.player === i).length} units${p.power != null ? ` · ${r.powers[p.power].name} active` : ''}`,
@@ -275,6 +285,31 @@ export class Match {
       this.weatherEl.title = w.description || '';
       this.weatherEl.dataset.w = w.id;
     }
+    // Game mode status.
+    const mode = o.mode?.type || 'standard';
+    this.modeEl.classList.toggle('hidden', mode === 'standard');
+    if (mode === 'king_of_the_hill') {
+      const hold = s.hold;
+      const holder = hold ? s.players.findIndex((_, p) => this.team(p) === hold[0]) : -1;
+      this.modeEl.textContent = holder >= 0 ? `Hill: ${this.playerName(holder)} ${hold[1]}/${o.mode.days ?? 3}` : `Hill: free (${o.mode.days ?? 3} days to win)`;
+      this.modeEl.style.setProperty('--c', holder >= 0 ? factionColor(r, holder) : '#888');
+    } else if (mode === 'battle_royale') {
+      this.modeEl.textContent = s.storm == null ? `Storm from day ${o.mode.start ?? 5}` : `Storm: ${s.storm.toFixed(1)} tiles`;
+      this.modeEl.style.setProperty('--c', '#b06cff');
+    } else if (mode === 'survival') {
+      const every = o.mode.every ?? 2;
+      const next = every - (s.day % every || every) + (s.day % every === 0 ? every : 0);
+      this.modeEl.textContent = `Survive to day ${(o.mode.days ?? 15) + 1} · wave in ${next || every}`;
+      this.modeEl.style.setProperty('--c', '#ff7a6b');
+    } else if (mode === 'score_race') {
+      this.modeEl.textContent = `Score race: day ${s.day}/${o.mode.days ?? 20}`;
+      this.modeEl.style.setProperty('--c', '#f3c046');
+    }
+    const diploMe = this.acting() ?? this.viewer() ?? this.locals[0];
+    this.diploBtn.classList.toggle('hidden', !o.diplomacy || diploMe == null || s.over);
+    const incoming = (s.offers || []).filter(x => x.to === diploMe).length;
+    this.diploBtn.textContent = incoming ? `Diplomacy (${incoming})` : 'Diplomacy';
+    this.diploBtn.classList.toggle('ready', incoming > 0);
     const powersOn = o.powers && r.powers?.length;
     const me = this.acting() ?? this.viewer();
     this.powerBtn.classList.toggle('hidden', !powersOn || me == null);
@@ -285,7 +320,7 @@ export class Match {
       this.powerBtn.textContent = `⚡ ${Math.floor(100 * Math.min(1, charge / Math.max(...r.powers.map(p => p.charge))))}%`;
       this.powerBtn.classList.toggle('ready', ready && this.myTurn());
     }
-    if (this.onHud) this.extraEl.replaceChildren(this.onHud(this.view) || '');
+    if (this.onHud) fill(this.extraEl, this.onHud(this.view) || '');
     const mine = this.myTurn();
     this.endBtn.disabled = !mine;
     const others = act.filter(p => !this.locals.includes(p));
@@ -295,10 +330,10 @@ export class Match {
   }
 
   /** A chat line from someone (seat -1 for a watcher or the host's notices). */
-  showChat(name, seat, text) {
+  showChat(name, seat, text, whisper = false) {
     if (!this.chatLog) return;
     const color = seat >= 0 ? factionColor(this.rules, seat) : '#a09fb8';
-    this.chatLog.append(h('li', { style: `--c:${color}` }, h('b', {}, name), ' ', text));
+    this.chatLog.append(h('li', { style: `--c:${color}`, class: whisper ? 'whisper' : '' }, h('b', {}, name), whisper ? ' (private) ' : ' ', text));
     while (this.chatLog.children.length > 80) this.chatLog.firstChild.remove();
     this.chatLog.scrollTop = this.chatLog.scrollHeight;
     const bubble = h('div', { class: 'bubble', style: `--c:${color}` }, h('b', {}, name), ' ', text);
@@ -374,7 +409,7 @@ export class Match {
     const me = this.acting();
     if (s.options?.fog && this.locals.length > 1 && me != null && this.curtainFor !== `${s.day}:${me}`) {
       this.curtainFor = `${s.day}:${me}`;
-      this.curtain.replaceChildren(
+      fill(this.curtain, 
         h('div', { class: 'big', style: `color:${factionColor(this.rules, me)}` }, `${this.playerName(me)}'s turn`),
         h('p', { class: 'muted' }, 'Fog of war is on. Pass the device, then tap to see your side of the battle.'),
         h('button', { class: 'primary', onclick: () => { this.curtain.classList.add('hidden'); this.focusPlayer(me, false); } }, 'Show my side'));
@@ -608,6 +643,58 @@ export class Match {
           }
           if (gone) this.say(`${this.unitName(gone)} runs out of fuel and is lost`, gone.player);
           await sleep(fast ? 250 : 400);
+          break;
+        }
+        case 'hill': {
+          s.hold = ev.team == null ? null : [ev.team, ev.days];
+          this.updateHud();
+          if (ev.team != null) {
+            const p = s.players.findIndex((_, i) => this.team(i) === ev.team);
+            this.say(`${this.playerName(p)} holds the hill (${ev.days})`, p);
+            if (s.hill) this.effect({ kind: 'ring', at: s.hill, dur: 700, color: factionColor(this.rules, p) });
+          }
+          break;
+        }
+        case 'storm': {
+          s.storm = ev.radius;
+          this.updateHud();
+          this.banner('The storm closes in', `Safe circle: ${ev.radius.toFixed(1)} tiles`, '#c79bff');
+          this.say('The storm closes in', s.turn);
+          await sleep(fast ? 500 : 900);
+          break;
+        }
+        case 'storming': {
+          const u = unit(ev.unit);
+          if (u) {
+            u.hp = ev.hp;
+            this.effect({ kind: 'text', at: [u.x, u.y], text: `-${ev.damage}%`, color: '#c79bff', dur: 800 });
+            this.effect({ kind: 'impact', at: [u.x, u.y], dur: 300 });
+          }
+          break;
+        }
+        case 'spawn': {
+          if (this.allied(ev.unit.player, this.viewer() ?? ev.unit.player) || this.seesTile(ev.unit.x, ev.unit.y)) {
+            s.units.push({ ...ev.unit });
+            this.effect({ kind: 'ring', at: [ev.unit.x, ev.unit.y], dur: 500, color: factionColor(this.rules, ev.unit.player) });
+          }
+          if (!this.waveSaid) {
+            this.waveSaid = true;
+            this.banner('A wave arrives', 'More invaders are coming', '#ff7a6b');
+            setTimeout(() => { this.waveSaid = false; }, 2000);
+          }
+          break;
+        }
+        case 'pact': {
+          const a = this.playerName(ev.from), b = this.playerName(ev.to);
+          const what = ev.pact?.type === 'truce' ? `a ${ev.pact.days}-day truce` : 'an alliance';
+          const text = ev.what === 'offer' ? `${a} offers ${b} ${what}`
+            : ev.what === 'accept' ? `${b} accepts ${what} with ${a}`
+            : ev.what === 'decline' ? `${b} turns down ${a}'s offer`
+            : ev.what === 'leave' ? `${a} leaves the alliance`
+            : `The truce between ${a} and ${b} ends`;
+          this.say(text, ev.from);
+          if (this.locals.includes(ev.to) || this.locals.includes(ev.from) || ev.what === 'accept' || ev.what === 'leave') this.toast(text);
+          sound.play('tick');
           break;
         }
         case 'weather': {
@@ -864,7 +951,7 @@ export class Match {
     if (o.surface) act('Surface', 'surface');
     if (o.stop !== false) act('Wait', 'wait');
     items.push(h('button', { class: 'quiet', onclick: () => this.cancel() }, 'Cancel'));
-    this.popup.replaceChildren(...items);
+    fill(this.popup, ...items);
     this.placePopup(x, y);
     items[0].focus({ preventScroll: true });
   }
@@ -883,7 +970,7 @@ export class Match {
     if (!ui.queue.length) return this.finishDrop();
     const c = ui.queue[0];
     ui.dropTiles = new Set(c.tiles.map(t => key(t[0], t[1])).filter(k => !used.has(k)));
-    this.popup.replaceChildren(
+    fill(this.popup, 
       h('div', { class: 'title' }, `Where does the ${this.rules.units[c.kind].name} get out?`),
       ui.queue.length > 1 ? h('button', { onclick: () => { ui.queue.shift(); this.nextDrop(); } }, 'Keep it on board') : null,
       ui.drops.length ? h('button', { class: 'primary', onclick: () => this.finishDrop() }, 'Done') : null,
@@ -897,6 +984,45 @@ export class Match {
     this.submit({ type: 'move', unit: ui.unit.id, x: ui.dest.x, y: ui.dest.y, then: { unload: ui.drops } });
   }
 
+  /** Alliances and truces: offers out, offers in, and leaving an alliance. */
+  openDiplomacy() {
+    const s = this.view;
+    const me = this.acting() ?? this.viewer() ?? this.locals[0];
+    if (me == null) return;
+    const send = action => { this.menuEl.classList.add('hidden'); this.diplo(me, action); };
+    const truce = (p) => (s.truces || []).find(t => (t.a === me && t.b === p) || (t.a === p && t.b === me));
+    const rows = s.players.map((pl, p) => {
+      if (p === me || !pl.alive) return null;
+      const ally = this.allied(me, p), t = truce(p);
+      const sent = (s.offers || []).find(o => o.from === me && o.to === p);
+      const got = (s.offers || []).find(o => o.from === p && o.to === me);
+      const status = ally ? 'Ally' : t ? `Truce until day ${t.until}` : 'At war';
+      return h('div', { class: 'diplo-row', style: `--c:${factionColor(this.rules, p)}` },
+        h('span', { class: 'dot' }), h('b', {}, this.playerName(p)), h('small', { class: 'muted' }, status),
+        got ? h('span', { class: 'row' },
+          h('small', {}, got.pact.type === 'alliance' ? 'offers an alliance' : `offers a ${got.pact.days}-day truce`),
+          h('button', { class: 'primary', onclick: () => send({ type: 'accept', from: p }) }, 'Accept'),
+          h('button', { onclick: () => send({ type: 'decline', from: p }) }, 'No'))
+          : h('span', { class: 'row' },
+            !ally && !t ? h('button', { disabled: !!sent, onclick: () => send({ type: 'offer', to: p, pact: { type: 'truce', days: 3 } }) }, 'Offer truce') : null,
+            !ally ? h('button', { disabled: !!sent, onclick: () => send({ type: 'offer', to: p, pact: { type: 'alliance' } }) }, sent ? 'Offer sent' : 'Offer alliance') : null));
+    });
+    const allies = s.players.some((pl, p) => p !== me && pl.alive && this.allied(me, p));
+    fill(this.menuEl, 
+      h('div', { class: 'title' }, 'Diplomacy'),
+      h('div', { class: 'muted small' }, 'Allies share what they see, cannot fight each other, and win together. A truce stops attacks and captures for a few days. You can do this at any time.'),
+      h('div', { class: 'diplo' }, rows),
+      allies ? h('button', { onclick: () => { if (confirm('Leave your alliance?')) send({ type: 'leave_alliance' }); } }, 'Leave the alliance') : null,
+      h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
+    this.menuEl.classList.remove('hidden');
+  }
+
+  /** Diplomatic actions go through even when it is not our turn. */
+  diplo(player, action) {
+    if (this.driver) this.commit(player, action, { local: true });
+    else this.send(player, action);
+  }
+
   openPowers() {
     const r = this.rules, s = this.view;
     const me = this.acting() ?? this.viewer();
@@ -907,7 +1033,7 @@ export class Match {
       class: 'buy power-row', disabled: !usable || (p.charge || 0) < pw.charge, title: pw.description || '',
       onclick: () => { this.menuEl.classList.add('hidden'); this.submit({ type: 'power', power: pw.id }); },
     }, h('span', {}, h('b', {}, pw.name), h('small', { class: 'muted' }, pw.description || '')), h('b', {}, `${pw.charge}`)));
-    this.menuEl.replaceChildren(
+    fill(this.menuEl, 
       h('div', { class: 'title' }, `Powers · charge ${p.charge || 0}`),
       h('div', { class: 'muted small' }, p.power != null ? `${r.powers[p.power].name} is active until your next turn.` : 'Charge comes from damage you deal (and half of what you take). One power at a time; it lasts until your next turn.'),
       h('div', { class: 'buylist' }, items),
@@ -928,14 +1054,14 @@ export class Match {
         onclick: () => this.submit({ type: 'build', x, y, unit: r.units[b.kind].id }),
       }, icon, h('span', {}, r.units[b.kind].name), h('b', {}, `${b.cost}`));
     });
-    this.popup.replaceChildren(h('div', { class: 'title' }, `Build · ${s.players[me].funds} funds`), h('div', { class: 'buylist' }, rows),
+    fill(this.popup, h('div', { class: 'title' }, `Build · ${s.players[me].funds} funds`), h('div', { class: 'buylist' }, rows),
       h('button', { class: 'quiet', onclick: () => this.clearUi() }, 'Cancel'));
     this.placePopup(x, y);
   }
 
   openMenu() {
     const items = (this.menu || []).map(m => h('button', { onclick: () => { this.menuEl.classList.add('hidden'); m.action(); } }, m.label));
-    this.menuEl.replaceChildren(...items, h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
+    fill(this.menuEl, ...items, h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
     this.menuEl.classList.toggle('hidden');
   }
 
@@ -949,7 +1075,7 @@ export class Match {
     const text = m ? (all.includes(m.player) ? 'Mission complete' : 'Mission failed')
       : w == null ? 'Draw' : all.length > 1 ? `${all.map(p => this.playerName(p)).join(' & ')} win` : `${this.playerName(w)} wins`;
     this.say(`Game over: ${text}`, w ?? 0);
-    this.menuEl.replaceChildren(
+    fill(this.menuEl, 
       h('div', { class: 'title big', style: `color:${w == null ? '#fff' : factionColor(this.rules, w)}` }, text),
       h('div', { class: 'muted' }, `Day ${this.view.day}`),
       h('button', { onclick: () => this.showStats() }, 'Stats'),
@@ -981,7 +1107,7 @@ export class Match {
   showStats() {
     const names = this.view.players.map((_, i) => this.playerName(i));
     const snaps = this.replay?.stats || this.stats;
-    this.menuEl.replaceChildren(
+    fill(this.menuEl, 
       h('div', { class: 'title' }, `${this.view.name} · stats`),
       statsView(this.rules, snaps, names),
       h('button', { onclick: () => { this.resultShown = false; this.showResult(); } }, 'Back'));
@@ -1035,7 +1161,7 @@ export class Match {
         : this.pending ? 'Sending…' : `Waiting for ${this.active().filter(p => !this.locals.includes(p)).map(p => this.playerName(p)).join(', ') || this.playerName(s.turn)}.`;
       parts.push(h('p', { class: 'muted' }, tip));
     }
-    this.info.replaceChildren(...parts);
+    fill(this.info, ...parts);
   }
 
   // ---- drawing -----------------------------------------------------------
@@ -1093,6 +1219,29 @@ export class Match {
       ctx.globalAlpha = 1;
     }
     if (ui.path && ui.path.length > 1 && ui.mode !== 'target' && ui.mode !== 'drop') this.drawPath(ui.path, factionColor(r, ui.unit.player));
+
+    // Battle royale: tint everything outside the safe circle.
+    if (s.storm != null) {
+      const cx = (s.width - 1) / 2, cy = (s.height - 1) / 2;
+      ctx.fillStyle = `rgba(150,70,220,${0.28 + 0.05 * Math.sin(now / 400)})`;
+      for (let y = 0; y < s.height; y++) for (let x = 0; x < s.width; x++) {
+        if (Math.hypot(x - cx, y - cy) > s.storm) ctx.fillRect(x * size, y * size, size, size);
+      }
+      ctx.strokeStyle = 'rgba(220,180,255,0.8)';
+      ctx.lineWidth = Math.max(2, this.scale);
+      ctx.beginPath();
+      ctx.arc((cx + 0.5) * size, (cy + 0.5) * size, (s.storm + 0.5) * size, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // King of the hill: the hill.
+    if (s.hill) {
+      const [hx, hy] = s.hill;
+      const holder = s.hold ? s.players.findIndex((_, p) => this.team(p) === s.hold[0]) : -1;
+      ctx.strokeStyle = holder >= 0 ? factionColor(r, holder) : `rgba(255,255,255,${0.6 + 0.3 * Math.sin(now / 300)})`;
+      ctx.lineWidth = Math.max(2, this.scale);
+      ctx.strokeRect(hx * size + 1, hy * size + 1, size - 2, size - 2);
+      drawTile(ctx, 194, hx * size + size / 2, hy * size, size / 2);
+    }
 
     // Fog of war: darken what this side cannot see.
     if (this.hidden.size) {

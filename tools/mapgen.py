@@ -8,7 +8,7 @@
 # exactly symmetric; three and six players are as close as a square grid allows.
 import math
 
-PROPS = set('HFAPc')
+PROPS = set('HFAPcT')
 GLYPHS = set('.f^=#~cFAPH')
 
 
@@ -130,7 +130,7 @@ def generate(name, desc, w, h, players, seed, *, base_angle=math.pi, base_r=0.78
              water=(), coast=0.9, lake=0.0, river_w=0.0, river_from=0.2,
              mountains=0.68, forests=0.6, ring=None, spokes=True, hub=None,
              cities=(), factories=(), airports=(), ports=(), center=(), port_own=False,
-             air_own=False, funds=None):
+             air_own=False, funds=None, towers=(), beaches=False, reefs=False):
     """
     water: any of 'island', 'lake', 'rivers'.
     cities/factories/airports: wedge points (r, frac) for neutral property; a nonzero frac
@@ -161,6 +161,24 @@ def generate(name, desc, w, h, players, seed, *, base_angle=math.pi, base_r=0.78
             if 'rivers' in water and r > river_from and r * L.hw * math.sin(phi) < river_w / 2:
                 wet = True
             grid[y][x] = '~' if wet else g
+
+    # Beaches along some shores, reefs off some coasts (from the same wedge noise).
+    def near(x, y, glyphs):
+        return any(0 <= x + dx < w and 0 <= y + dy < h and grid[y + dy][x + dx] in glyphs
+                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+    if beaches or reefs:
+        marks = []
+        for y in range(h):
+            for x in range(w):
+                r, phi = L.canon(x, y)
+                px, py = r * math.cos(phi) * L.hw, r * math.sin(phi) * L.hw
+                n = fbm(px, py, seed + 5, 2.2)
+                if beaches and grid[y][x] in '.f' and near(x, y, '~') and n > 0.5:
+                    marks.append((x, y, 's'))
+                if reefs and grid[y][x] == '~' and not near(x, y, '.f^s') and n > 0.62:
+                    marks.append((x, y, 'r'))
+        for x, y, g in marks:
+            grid[y][x] = g
 
     # Everything placed per wedge: compute it for player 0 and turn it into every wedge.
     def everywhere(p):
@@ -228,7 +246,7 @@ def generate(name, desc, w, h, players, seed, *, base_angle=math.pi, base_r=0.78
             put(turn(p), g, j)
         for (p, g) in kit_free:
             put(turn(p), g)
-    for glyph, pts in (('c', cities), ('F', factories), ('A', airports)):
+    for glyph, pts in (('c', cities), ('F', factories), ('A', airports), ('T', towers)):
         for (r, f) in mirrored(pts):
             p0 = L.to_tile(r, f)
             for j, q in enumerate(everywhere(p0)):

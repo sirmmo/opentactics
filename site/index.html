@@ -151,6 +151,12 @@ button.power.ready { border-color: var(--accent); color: var(--accent); box-shad
 .players.many .chip { padding: 2px 6px; font-size: 12px; gap: 4px; }
 .players.many .chip small:not(.team):not(.pow) { display: none; }
 .players.many .chip .dot { width: 9px; height: 9px; }
+.hud .mode { font-size: 13px; padding: 3px 8px; border-radius: 6px; background: #0004; border-left: 4px solid var(--c, #888); }
+button.ready { border-color: var(--accent); color: var(--accent); }
+.diplo { display: flex; flex-direction: column; gap: 6px; text-align: left; max-height: 50vh; overflow: auto; }
+.diplo-row { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 8px; align-items: center; background: var(--panel2); border-left: 4px solid var(--c); border-radius: 6px; padding: 6px 8px; }
+.diplo-row .row { grid-column: 1 / -1; margin: 0; gap: 4px; }
+.diplo-row button { padding: 3px 8px; font-size: 13px; }
 .chip .tag.team { color: var(--text); } .chip .tag.pow { color: var(--accent); }
 .power-row { grid-template-columns: 1fr auto; }
 .power-row span { display: flex; flex-direction: column; } .power-row small { font-size: 11px; }
@@ -185,6 +191,8 @@ button.power.ready { border-color: var(--accent); color: var(--accent); box-shad
 .chat { display: flex; flex-direction: column; gap: 4px; }
 .chatlog { list-style: none; margin: 0; padding: 0; max-height: 140px; overflow: auto; font-size: 12px; }
 .chatlog li { border-left: 3px solid var(--c); padding: 1px 6px; margin-bottom: 2px; overflow-wrap: anywhere; }
+.chatlog li.whisper { font-style: italic; background: #ffffff0a; }
+.chat .chat-to { flex: none; padding: 4px; font-size: 12px; max-width: 90px; }
 .chatlog b { color: var(--c); font-weight: normal; }
 .chat .row { margin: 0; flex-wrap: nowrap; } .chat .row input { flex: 1; }
 .chat .emotes { flex-wrap: wrap; gap: 2px; } .chat .emotes button { padding: 2px 6px; font-family: system-ui, sans-serif; font-size: 13px; }

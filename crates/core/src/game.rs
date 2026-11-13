@@ -94,6 +94,92 @@ pub struct Options {
     /// same time (and teammates always do).
     #[serde(default)]
     pub simultaneous: bool,
+    /// How the game is won (besides the usual ways).
+    #[serde(default)]
+    pub mode: Mode,
+    /// Players may offer each other alliances and truces during the game.
+    #[serde(default)]
+    pub diplomacy: bool,
+}
+
+fn three() -> u32 {
+    3
+}
+fn five() -> u32 {
+    5
+}
+fn fifteen() -> u32 {
+    15
+}
+fn twenty() -> u32 {
+    20
+}
+fn two_u() -> u32 {
+    2
+}
+
+/// Ways to play besides "last side standing" (which always applies too).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Mode {
+    #[default]
+    Standard,
+    /// A side holding the hill (the marked middle tile) with a unit at the start
+    /// of `days` days in a row wins.
+    KingOfTheHill {
+        #[serde(default = "three")]
+        days: u32,
+    },
+    /// From day `start`, a storm closes in on the middle; every `every` days it
+    /// shrinks, and units outside lose `damage` health (out of 10) each turn.
+    BattleRoyale {
+        #[serde(default = "five")]
+        start: u32,
+        #[serde(default = "two_u")]
+        every: u32,
+        #[serde(default = "two_u")]
+        damage: u32,
+    },
+    /// The `invaders` seats get free waves of units every `every` days; everyone
+    /// else is one team that wins by lasting until day `days`.
+    Survival {
+        #[serde(default = "fifteen")]
+        days: u32,
+        #[serde(default = "two_u")]
+        every: u32,
+        #[serde(default)]
+        invaders: Vec<usize>,
+    },
+    /// After `days` days the side with the most property wins.
+    ScoreRace {
+        #[serde(default = "twenty")]
+        days: u32,
+    },
+}
+
+/// An agreement one player offers another.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Pact {
+    /// Join teams: share vision, never fight, win together.
+    Alliance,
+    /// No attacks or captures between the two for some days.
+    Truce { days: u32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Offer {
+    pub from: usize,
+    pub to: usize,
+    pub pact: Pact,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Truce {
+    pub a: usize,
+    pub b: usize,
+    /// The truce holds until this day begins.
+    pub until: u32,
 }
 
 /// Everything that changes during a game. With the rule set, this is the whole game.
@@ -132,6 +218,19 @@ pub struct State {
     pub weather: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mission: Option<Mission>,
+    /// King of the hill: the hill tile, and the side holding it with how many days.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hill: Option<[i32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hold: Option<[u32; 2]>,
+    /// Battle royale: the safe circle's radius in tiles (none before the storm).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storm: Option<f32>,
+    /// Diplomacy: open offers and running truces.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub offers: Vec<Offer>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub truces: Vec<Truce>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -154,6 +253,18 @@ pub enum Action {
     Power {
         power: String,
     },
+    /// Diplomacy, allowed at any time: offer a pact, answer one, or leave an alliance.
+    Offer {
+        to: usize,
+        pact: Pact,
+    },
+    Accept {
+        from: usize,
+    },
+    Decline {
+        from: usize,
+    },
+    LeaveAlliance,
     EndTurn,
     Resign,
 }
@@ -205,6 +316,16 @@ pub enum Event {
     /// Out of fuel.
     Crash { unit: u32, x: i32, y: i32 },
     Weather { weather: usize },
+    /// King of the hill: who holds it and for how many days (none: nobody).
+    Hill { team: Option<usize>, days: u32 },
+    /// Battle royale: the safe circle shrank.
+    Storm { radius: f32 },
+    /// A unit caught in the storm.
+    Storming { unit: u32, damage: u32, hp: u32 },
+    /// Survival: a wave of units appears.
+    Spawn { unit: Unit },
+    /// Diplomacy: what happened between two players ("offer", "accept", "decline", "leave", "truce_over").
+    Pact { what: String, from: usize, to: usize, pact: Option<Pact> },
     Power { player: usize, power: usize },
     Turn { player: usize, day: u32, income: u32 },
     Defeat { player: usize },
@@ -340,6 +461,13 @@ impl Game {
                 options.teams = m.teams.clone();
             }
         }
+        // Survival is everyone against the invaders.
+        if let Mode::Survival { invaders, .. } = &options.mode {
+            if invaders.is_empty() || invaders.len() >= map.players || invaders.iter().any(|p| *p >= map.players) {
+                return Err("setup: survival needs some invader seats and some defenders".into());
+            }
+            options.teams = (0..map.players).map(|p| usize::from(invaders.contains(&p))).collect();
+        }
         if !options.teams.is_empty() && options.teams.len() != map.players {
             return Err("setup: give a team for every seat, or none".into());
         }
@@ -380,10 +508,18 @@ impl Game {
                 options,
                 weather: weather_fixed.unwrap_or(0),
                 mission: map.mission.clone(),
+                hill: None,
+                hold: None,
+                storm: None,
+                offers: vec![],
+                truces: vec![],
             },
             rules,
         };
         game.index();
+        if matches!(game.s.options.mode, Mode::KingOfTheHill { .. }) {
+            game.s.hill = Some(game.find_hill().ok_or("map: no land in the middle for a hill")?);
+        }
         for u in &map.units {
             let kind = game
                 .rules
@@ -617,6 +753,17 @@ impl Game {
         self.bonus(player, |e| if let Effect::Vision { tiles } = e { Some(*tiles) } else { None })
     }
 
+    /// Extra damage, in percent, from the property a player owns (comms towers).
+    pub fn tower_bonus(&self, player: usize) -> u32 {
+        self.s
+            .owner
+            .iter()
+            .enumerate()
+            .filter(|(_, o)| **o == player as i8)
+            .map(|(i, _)| self.rules.terrains[self.s.terrain[i] as usize].attack_bonus)
+            .sum()
+    }
+
     /// The most charge anyone can hold: enough for the dearest power.
     fn charge_cap(&self) -> u32 {
         self.rules.powers.iter().map(|p| p.charge).max().unwrap_or(0)
@@ -828,7 +975,8 @@ impl Game {
         let health = attacker_hp.div_ceil(10);
         let cover = (stars * self.rules.combat.defense_per_star * defender.health() / 10).min(100);
         let raw = (base + luck) * health * (100 - cover) / 1000;
-        raw * (100 + self.attack_bonus(attacker_player)) / (100 + self.defense_bonus(defender.player))
+        let boost = self.attack_bonus(attacker_player) + self.tower_bonus(attacker_player);
+        raw * (100 + boost) / (100 + self.defense_bonus(defender.player))
     }
 
     fn has_ammo(&self, unit: &Unit) -> bool {
@@ -838,6 +986,7 @@ impl Game {
     /// Whether `attacker` could fire at `defender` at all (ignoring range).
     fn can_hit(&self, attacker: &Unit, defender: &Unit) -> bool {
         !self.allied(attacker.player, defender.player)
+            && !self.at_peace(attacker.player, defender.player)
             && self.dmg[attacker.kind][defender.kind] > 0
             && self.has_ammo(attacker)
             && (!defender.dived || self.def(attacker).detects_dived)
@@ -890,7 +1039,7 @@ impl Game {
     pub fn can_capture(&self, unit: &Unit, x: i32, y: i32) -> bool {
         self.def(unit).can_capture
             && self.terrain(x, y).capturable
-            && self.owner(x, y).is_none_or(|o| !self.allied(o, unit.player))
+            && self.owner(x, y).is_none_or(|o| !self.allied(o, unit.player) && !self.at_peace(o, unit.player))
     }
 
     /// Unit kinds `player` could build on `(x, y)` right now, with their prices.
@@ -947,6 +1096,11 @@ impl Game {
             self.settle(&mut events);
             return Ok(events);
         }
+        if matches!(action, Action::Offer { .. } | Action::Accept { .. } | Action::Decline { .. } | Action::LeaveAlliance) {
+            self.diplomacy(player, action, &mut events)?;
+            self.settle(&mut events);
+            return Ok(events);
+        }
         if !self.s.active.contains(&player) {
             return Err("It is not your turn.".into());
         }
@@ -955,7 +1109,7 @@ impl Game {
             Action::Build { x, y, unit } => self.build(player, *x, *y, unit, &mut events)?,
             Action::Power { power } => self.use_power(player, power, &mut events)?,
             Action::EndTurn => self.end_turn(player, &mut events),
-            Action::Resign => unreachable!(),
+            _ => unreachable!(),
         }
         self.settle(&mut events);
         Ok(events)
@@ -1389,6 +1543,209 @@ impl Game {
         }
     }
 
+    /// The day after which the game ends, if any.
+    pub fn day_limit(&self) -> u32 {
+        match &self.s.options.mode {
+            Mode::ScoreRace { days } | Mode::Survival { days, .. } => *days,
+            _ => self.rules.victory.day_limit,
+        }
+    }
+
+    /// Things that happen once a day, before anyone moves: the hill is scored,
+    /// the storm closes in, invaders arrive, truces run out.
+    fn new_day(&mut self, events: &mut Vec<Event>) {
+        let day = self.s.day;
+        let ended: Vec<Truce> = self.s.truces.iter().filter(|t| t.until <= day).cloned().collect();
+        self.s.truces.retain(|t| t.until > day);
+        for t in ended {
+            events.push(Event::Pact { what: "truce_over".into(), from: t.a, to: t.b, pact: None });
+        }
+        match self.s.options.mode.clone() {
+            Mode::KingOfTheHill { days } => {
+                let Some([hx, hy]) = self.s.hill else { return };
+                let holder = self.unit_at(hx, hy).map(|u| self.team(u.player));
+                self.s.hold = match (holder, self.s.hold) {
+                    (Some(t), Some([h, n])) if h as usize == t => Some([t as u32, n + 1]),
+                    (Some(t), _) => Some([t as u32, 1]),
+                    (None, _) => None,
+                };
+                let held = self.s.hold.map_or(0, |h| h[1]);
+                events.push(Event::Hill { team: holder, days: held });
+                if held >= days {
+                    self.finish(holder, events);
+                }
+            }
+            Mode::BattleRoyale { start, every, .. } => {
+                if day < start {
+                    return;
+                }
+                let full = ((self.s.width * self.s.width + self.s.height * self.s.height) as f32).sqrt() / 2.0;
+                let steps = ((day - start) / every.max(1) + 1) as f32;
+                let radius = (full * (1.0 - steps * 0.12)).max(1.5);
+                if self.s.storm != Some(radius) {
+                    self.s.storm = Some(radius);
+                    events.push(Event::Storm { radius });
+                }
+            }
+            Mode::Survival { every, invaders, .. } => {
+                if day % every.max(1) == 0 {
+                    self.spawn_wave(&invaders, day / every.max(1), events);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether `(x, y)` is outside the battle royale's safe circle.
+    pub fn in_storm(&self, x: i32, y: i32) -> bool {
+        match self.s.storm {
+            Some(r) => {
+                let (cx, cy) = ((self.s.width - 1) as f32 / 2.0, (self.s.height - 1) as f32 / 2.0);
+                let (dx, dy) = (x as f32 - cx, y as f32 - cy);
+                (dx * dx + dy * dy).sqrt() > r
+            }
+            None => false,
+        }
+    }
+
+    /// Survival: free units for the invaders at their property, more and
+    /// stronger with every wave.
+    fn spawn_wave(&mut self, invaders: &[usize], wave: u32, events: &mut Vec<Event>) {
+        let ladder: Vec<usize> = ["infantry", "mech", "recon", "tank", "artillery", "antiair", "rockets"]
+            .iter()
+            .filter_map(|id| self.rules.unit_by_id(id))
+            .collect();
+        let ladder = if ladder.is_empty() { (0..self.rules.units.len()).collect() } else { ladder };
+        for &p in invaders {
+            if !self.s.players[p].alive {
+                continue;
+            }
+            let mut spots: Vec<(i32, i32)> = vec![];
+            for y in 0..self.s.height {
+                for x in 0..self.s.width {
+                    if self.owner(x, y) == Some(p) && self.unit_at(x, y).is_none() {
+                        spots.push((x, y));
+                    }
+                }
+            }
+            // Factories first: they are where armies come from.
+            spots.sort_by_key(|(x, y)| (self.terrain(*x, *y).builds.is_empty(), *y, *x));
+            let count = (1 + wave / 2) as usize;
+            for (i, (x, y)) in spots.into_iter().take(count).enumerate() {
+                let top = (wave as usize).min(ladder.len());
+                let kind = ladder[(i + wave as usize) % top.max(1)];
+                if self.cost[kind][self.s.terrain[self.at(x, y)] as usize] == 0 {
+                    continue;
+                }
+                let unit = self.fresh_unit(kind, p, x, y);
+                self.s.units.push(unit.clone());
+                events.push(Event::Spawn { unit });
+            }
+        }
+    }
+
+    /// King of the hill: the land tile nearest the middle that every foot unit can stand on.
+    fn find_hill(&self) -> Option<[i32; 2]> {
+        let foot = self.rules.units.iter().position(|u| u.can_capture)?;
+        let (cx, cy) = ((self.s.width - 1) as f32 / 2.0, (self.s.height - 1) as f32 / 2.0);
+        let mut best: Option<(f32, [i32; 2])> = None;
+        for y in 0..self.s.height {
+            for x in 0..self.s.width {
+                if self.move_cost(foot, x, y) == 0 || self.terrain(x, y).capturable {
+                    continue;
+                }
+                let d = (x as f32 - cx).abs() + (y as f32 - cy).abs() + (x + y * 3) as f32 * 1e-4;
+                if best.is_none_or(|b| d < b.0) {
+                    best = Some((d, [x, y]));
+                }
+            }
+        }
+        best.map(|b| b.1)
+    }
+
+    /// Whether a truce stops these two players fighting.
+    pub fn at_peace(&self, a: usize, b: usize) -> bool {
+        self.s.truces.iter().any(|t| (t.a == a && t.b == b) || (t.a == b && t.b == a))
+    }
+
+    fn diplomacy(&mut self, player: usize, action: &Action, events: &mut Vec<Event>) -> Result<(), String> {
+        if !self.s.options.diplomacy {
+            return Err("Diplomacy is off in this game.".into());
+        }
+        let n = self.s.players.len();
+        match action {
+            Action::Offer { to, pact } => {
+                let to = *to;
+                if to >= n || to == player || !self.s.players[to].alive {
+                    return Err("There is nobody to make that offer to.".into());
+                }
+                if let Pact::Truce { days } = pact {
+                    if *days == 0 || *days > 20 {
+                        return Err("A truce lasts 1 to 20 days.".into());
+                    }
+                }
+                if *pact == Pact::Alliance && self.allied(player, to) {
+                    return Err("You are already allies.".into());
+                }
+                self.s.offers.retain(|o| !(o.from == player && o.to == to));
+                self.s.offers.push(Offer { from: player, to, pact: pact.clone() });
+                events.push(Event::Pact { what: "offer".into(), from: player, to, pact: Some(pact.clone()) });
+            }
+            Action::Accept { from } | Action::Decline { from } => {
+                let from = *from;
+                let i = self
+                    .s
+                    .offers
+                    .iter()
+                    .position(|o| o.from == from && o.to == player)
+                    .ok_or("There is no such offer.")?;
+                let offer = self.s.offers.remove(i);
+                if !self.s.players[from].alive {
+                    return Err("That player is gone.".into());
+                }
+                if matches!(action, Action::Decline { .. }) {
+                    events.push(Event::Pact { what: "decline".into(), from, to: player, pact: Some(offer.pact) });
+                    return Ok(());
+                }
+                match offer.pact {
+                    Pact::Alliance => {
+                        // The two teams become one.
+                        let (keep, merge) = (self.team(from), self.team(player));
+                        for p in 0..n {
+                            let t = self.team(p);
+                            if t == keep || t == merge {
+                                self.s.players[p].team = Some(keep);
+                            }
+                        }
+                        let truces = std::mem::take(&mut self.s.truces);
+                        self.s.truces = truces.into_iter().filter(|t| !self.allied(t.a, t.b)).collect();
+                    }
+                    Pact::Truce { days } => {
+                        self.s.truces.retain(|t| !((t.a == from && t.b == player) || (t.a == player && t.b == from)));
+                        self.s.truces.push(Truce { a: from, b: player, until: self.s.day + days });
+                    }
+                }
+                events.push(Event::Pact { what: "accept".into(), from, to: player, pact: Some(offer.pact) });
+            }
+            Action::LeaveAlliance => {
+                if matches!(self.s.options.mode, Mode::Survival { .. }) {
+                    return Err("Nobody leaves in survival.".into());
+                }
+                let mine = self.team(player);
+                let others: Vec<usize> = (0..n).filter(|p| *p != player && self.team(*p) == mine).collect();
+                if others.is_empty() {
+                    return Err("You have no allies to leave.".into());
+                }
+                // A fresh team number nobody uses.
+                let fresh = (0..).map(|k| 2000 + k).find(|t| (0..n).all(|p| self.team(p) != *t)).unwrap();
+                self.s.players[player].team = Some(fresh);
+                events.push(Event::Pact { what: "leave".into(), from: player, to: others[0], pact: None });
+            }
+            _ => unreachable!(),
+        }
+        Ok(())
+    }
+
     /// `player` is done for today.
     fn end_turn(&mut self, player: usize, events: &mut Vec<Event>) {
         self.s.active.retain(|p| *p != player);
@@ -1407,16 +1764,30 @@ impl Game {
             self.s.waiting.retain(|p| players[*p].alive);
             if self.s.waiting.is_empty() {
                 self.s.day += 1;
-                let limit = self.rules.victory.day_limit;
+                let limit = self.day_limit();
                 if limit > 0 && self.s.day > limit && self.s.mission.is_none() {
-                    let leader = self.leader();
-                    self.finish(leader, events);
+                    // Survival: the defenders lasted.
+                    let winner = if let Mode::Survival { invaders, .. } = &self.s.options.mode {
+                        (0..self.s.players.len()).find(|p| !invaders.contains(p)).map(|p| self.team(p))
+                    } else {
+                        self.leader()
+                    };
+                    self.finish(winner, events);
                     return;
                 }
                 if self.s.options.weather == "random" {
                     self.roll_weather(events);
                 }
+                self.new_day(events);
+                if self.s.over {
+                    return;
+                }
                 self.s.waiting = (0..self.s.players.len()).filter(|p| self.s.players[*p].alive).collect();
+                if self.s.waiting.is_empty() {
+                    // Everyone is gone at once: a draw.
+                    self.finish(None, events);
+                    return;
+                }
             }
             let group = self.form_group();
             self.s.waiting.retain(|p| !group.contains(p));
@@ -1428,6 +1799,15 @@ impl Game {
                 }
             }
             if self.s.over {
+                return;
+            }
+            // Starting turns can knock players out (crashes, the storm): stop if one side is left.
+            let mut teams: Vec<usize> =
+                (0..self.s.players.len()).filter(|p| self.s.players[*p].alive).map(|p| self.team(p)).collect();
+            teams.sort_unstable();
+            teams.dedup();
+            if teams.len() <= 1 {
+                self.finish(teams.first().copied(), events);
                 return;
             }
             let players = &self.s.players;
@@ -1583,11 +1963,32 @@ impl Game {
         if self.s.options.supply {
             self.supply_phase(player, events);
         }
+        if let (Mode::BattleRoyale { damage, start, every }, Some(radius)) = (self.s.options.mode.clone(), self.s.storm) {
+            // Once the circle is as small as it gets, the storm grows fiercer every day.
+            let full = ((self.s.width * self.s.width + self.s.height * self.s.height) as f32).sqrt() / 2.0;
+            let shrinking_days = ((full - 1.5) / (full * 0.12)).ceil() as u32 * every.max(1);
+            let late = if radius <= 1.5 { self.s.day.saturating_sub(start + shrinking_days) } else { 0 };
+            let damage = damage + late;
+            let caught: Vec<u32> =
+                self.s.units.iter().filter(|u| u.player == player && self.in_storm(u.x, u.y)).map(|u| u.id).collect();
+            for id in caught {
+                let u = self.unit_mut(id);
+                let hit = (damage * 10).min(u.hp);
+                u.hp -= hit;
+                let (hp, x, y) = (u.hp, u.x, u.y);
+                events.push(Event::Storming { unit: id, damage: hit, hp });
+                if hp == 0 {
+                    self.take(id);
+                    events.push(Event::Destroy { unit: id, x, y });
+                    self.after_loss(player, events);
+                }
+            }
+        }
 
         let step = self.rules.repair.hp * 10;
         for i in 0..self.s.units.len() {
             let u = self.s.units[i].clone();
-            if u.player != player || u.hp >= FULL_HP || self.owner(u.x, u.y) != Some(player) {
+            if u.player != player || u.hp >= FULL_HP || self.owner(u.x, u.y) != Some(player) || self.in_storm(u.x, u.y) {
                 continue;
             }
             if !self.terrain(u.x, u.y).repairs.contains(&self.def(&u).class) {
