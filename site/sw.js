@@ -13,7 +13,7 @@ const CORE = [
   'js/main.js', 'js/game.js', 'js/art.js', 'js/engine.js', 'js/editor.js', 'js/net.js', 'js/sound.js',
   'js/ai-worker.js', 'js/stats.js', 'js/settings.js', 'js/mapgen.js', 'js/rules-editor.js', 'js/i18n.js',
   'vendor/peerjs.min.js', 'rules/default.json', 'rules/blitz.json', 'maps/index.json',
-  'assets/tiles.png', 'assets/kenney-mini.ttf', 'assets/kenney-mini-square-mono.ttf',
+  'assets/tiles.png', 'assets/kenney-mini.ttf', 'assets/kenney-mini-square-mono.ttf', 'assets/opendyslexic-400.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png',
   ...['bong_001', 'click_002', 'confirmation_001', 'drop_002', 'error_004', 'glitch_002',
     'maximize_006', 'scratch_002', 'select_003', 'tick_001'].map(s => `assets/${s}.ogg`),

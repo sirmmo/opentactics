@@ -2,6 +2,11 @@
 // What each terrain and unit looks like comes from the `view` fields of the rule set.
 
 export const T = 16;
+
+// Fonts for text drawn on canvases, following the font setting.
+let fonts = { main: 'kenney, monospace', mono: 'kenney-mono, monospace' };
+export function setCanvasFonts(main, mono) { fonts = { main, mono }; }
+export function canvasFont(px, kind = 'main') { return `${Math.round(px)}px ${fonts[kind]}`; }
 const COLS = 18;
 let sheet, dim;
 // Recoloured copies of the sheet for armies whose `view.recolor` shifts a hue
@@ -126,7 +131,7 @@ export function drawUnit(ctx, rules, kind, player, dx, dy, size, dark = false) {
     ctx.fillStyle = '#1b1a26';
     ctx.fillRect(dx, dy, s, s);
     ctx.fillStyle = factionColor(rules, player);
-    ctx.font = `${Math.round(s * 0.95)}px kenney-mono, monospace`;
+    ctx.font = canvasFont(s * 0.95, 'mono');
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(mark, dx + s / 2, dy + s / 2 + 1);

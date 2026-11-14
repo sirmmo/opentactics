@@ -3,7 +3,7 @@
 // Maps only set the ground and the starting positions: every player always plays
 // by the same rules, so there is nothing per-player to configure here.
 
-import { T, drawTile, drawUnit, terrainLayer, mapToBoard, factionColor, preview } from './art.js';
+import { T, drawTile, drawUnit, terrainLayer, mapToBoard, factionColor, preview, canvasFont } from './art.js';
 import { generatePlayable } from './mapgen.js';
 import { h } from './game.js';
 
@@ -339,7 +339,7 @@ export class Editor {
     ctx.stroke();
     ctx.setLineDash([]);
     // Named units and mission targets.
-    ctx.font = `${Math.max(9, 4 * this.scale)}px kenney, monospace`;
+    ctx.font = canvasFont(Math.max(9, 4 * this.scale));
     ctx.textAlign = 'center';
     for (const u of m.units) {
       if (!u.tag) continue;

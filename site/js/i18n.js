@@ -112,6 +112,8 @@ const IT = {
   'Dived: hidden from enemies not next to it': 'Immerso: invisibile ai nemici non adiacenti',
   // ---- settings ----
   'Army symbols': 'Simboli degli eserciti', 'Each army also gets a shape on its units, buildings and name, for colour-blind players.': 'Ogni esercito ha anche una forma su unità, edifici e nome, per chi distingue male i colori.',
+  Font: 'Carattere', Pixel: 'Pixel', 'Dyslexia-friendly': 'Per dislessia',
+  'Pixel (the game’s look), your device’s standard font, or OpenDyslexic, which many people with dyslexia find easier to read.': 'Pixel (lo stile del gioco), il carattere standard del dispositivo, oppure OpenDyslexic, che molte persone con dislessia trovano più facile da leggere.',
   'Text size': 'Dimensione del testo', 'Bigger text everywhere outside the board.': 'Testo più grande ovunque tranne che sul campo.', Large: 'Grande', Larger: 'Più grande',
   'Reduce motion': 'Riduci il movimento', 'No screen shake, bobbing, lunges, rain or water glints.': 'Niente scossoni, ondeggiamenti, scatti, pioggia o riflessi sull’acqua.',
   "Other players' moves": 'Mosse degli altri', 'How quickly computer and online moves play out.': 'Quanto velocemente si vedono le mosse del computer e degli altri.',

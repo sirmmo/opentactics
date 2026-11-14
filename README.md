@@ -32,7 +32,8 @@ shape; they set the ground and the starting positions, not the rules.
   before ending a turn with idle units; computer players think in a Web Worker.
 - **Atmosphere**: battle sounds and chiptune music made with Web Audio; rain, snow and
   water animation.
-- **Accessibility**: army symbols (16 shapes), text size, reduce motion, keyboard play.
+- **Accessibility**: army symbols (16 shapes), a choice of font (pixel, standard, or
+  dyslexia-friendly OpenDyslexic), text size, reduce motion, keyboard play.
 - **Editors**: a random map generator and a mission editor in the map editor; a rules
   editor whose rule sets can be shared as links (`#rules=…`).
 - **Languages**: English and Italian (automatic, or chosen in Settings).
@@ -181,4 +182,6 @@ later (see `LICENSE`). The bundled art, fonts and sounds keep their own licences
 
 Art: [Tiny Battle](https://kenney.nl/assets/tiny-battle). Fonts: Kenney Fonts. Sounds:
 [Interface Sounds](https://kenney.nl/assets/interface-sounds). All by Kenney, CC0.
-Online play uses [PeerJS](https://peerjs.com) (MIT), vendored in `site/vendor`.
+Online play uses [PeerJS](https://peerjs.com) (MIT), vendored in `site/vendor`. The
+dyslexia-friendly font is [OpenDyslexic](https://opendyslexic.org) by Abbie Gonzalez
+(SIL Open Font License, `site/assets/opendyslexic-LICENSE.txt`).

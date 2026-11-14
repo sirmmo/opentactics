@@ -16,13 +16,15 @@
 <style>
 @font-face { font-family: kenney; src: url(assets/kenney-mini.ttf); }
 @font-face { font-family: kenney-mono; src: url(assets/kenney-mini-square-mono.ttf); }
+@font-face { font-family: OpenDyslexic; src: url(assets/opendyslexic-400.woff2) format('woff2'); font-display: swap; }
 :root {
+  --font: kenney, system-ui, sans-serif; --font-mono: kenney-mono, monospace;
   --bg: #1b1a26; --panel: #262536; --panel2: #302f44; --line: #45435e; --text: #ecebf5; --muted: #a09fb8;
   --accent: #f3c046; --bad: #ff7a6b; --good: #8ee08a;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: calc(15px * var(--ts, 1))/1.4 kenney, system-ui, sans-serif; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: calc(15px * var(--ts, 1))/1.4 var(--font); }
 body { overflow: hidden; }
 #app { height: 100%; display: flex; flex-direction: column;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
@@ -53,7 +55,7 @@ h3 { color: var(--muted); font-size: calc(13px * var(--ts, 1)); text-transform: 
 
 /* menu */
 .menu-screen { margin: auto; padding: 24px 16px; width: min(640px, 100%); display: flex; flex-direction: column; gap: 28px; overflow: auto; }
-.logo h1 { font-size: clamp(40px, 10vw, 72px); letter-spacing: .04em; line-height: 1; color: #e8594f; text-shadow: 4px 4px 0 #0008; }
+.logo h1 { font-family: kenney, system-ui, sans-serif; font-size: clamp(40px, 10vw, 72px); letter-spacing: .04em; line-height: 1; color: #e8594f; text-shadow: 4px 4px 0 #0008; }
 .logo h1 span { color: #2f9be0; }
 .logo p { color: var(--muted); margin: 10px 0 0; }
 .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
@@ -97,11 +99,11 @@ h3 { color: var(--muted); font-size: calc(13px * var(--ts, 1)); text-transform: 
 .seat .who .brain { display: inline-flex; gap: 4px; }
 .seat .who .brain select, .seat .who select.team { padding: 2px 4px; font-size: calc(12px * var(--ts, 1)); }
 .seat .who select.team { margin-left: 8px; padding: 2px 4px; font-size: calc(12px * var(--ts, 1)); }
-.room .code { font: calc(40px * var(--ts, 1)) kenney-mono, monospace; letter-spacing: .15em; color: var(--accent); }
+.room .code { font: calc(40px * var(--ts, 1)) var(--font-mono); letter-spacing: .15em; color: var(--accent); }
 .room input { flex: 1; }
 .joinbox { margin: 32px auto; width: min(420px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 12px; }
 .joinbox label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
-.codein { font: calc(32px * var(--ts, 1)) kenney-mono, monospace; letter-spacing: .2em; text-transform: uppercase; text-align: center; color: var(--accent); }
+.codein { font: calc(32px * var(--ts, 1)) var(--font-mono); letter-spacing: .2em; text-transform: uppercase; text-align: center; color: var(--accent); }
 
 /* battle */
 .hud { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: var(--panel); border-bottom: 2px solid var(--line); flex-wrap: wrap; }
@@ -110,7 +112,7 @@ h3 { color: var(--muted); font-size: calc(13px * var(--ts, 1)); text-transform: 
 .chip { display: flex; gap: 6px; align-items: center; padding: 4px 10px; border-radius: 6px; background: var(--panel2); border: 2px solid transparent; font-size: calc(14px * var(--ts, 1)); }
 .chip.active { border-color: var(--c); box-shadow: 0 0 12px -2px var(--c); }
 .chip.out { opacity: .4; text-decoration: line-through; }
-.chip .funds { font-family: kenney-mono, monospace; }
+.chip .funds { font-family: var(--font-mono); }
 .chip small { color: var(--muted); font-size: calc(11px * var(--ts, 1)); }
 .chip .tag { background: #0004; padding: 0 4px; border-radius: 3px; }
 .field { flex: 1; display: grid; grid-template-columns: 1fr 280px; min-height: 0; }
@@ -138,13 +140,13 @@ h3 { color: var(--muted); font-size: calc(13px * var(--ts, 1)); text-transform: 
 .buylist { display: flex; flex-direction: column; gap: 4px; }
 .buy { display: grid; grid-template-columns: 32px 1fr auto; gap: 8px; align-items: center; text-align: left; padding: 4px 8px; }
 .buy canvas { image-rendering: pixelated; }
-.buy b { font-family: kenney-mono, monospace; color: var(--accent); }
+.buy b { font-family: var(--font-mono); color: var(--accent); }
 .banner { position: absolute; left: 0; right: 0; top: 38%; z-index: 4; pointer-events: none; text-align: center; background: linear-gradient(90deg, transparent, #000c 20%, #000c 80%, transparent); padding: 10px; animation: slide 1.3s ease both; font-size: calc(20px * var(--ts, 1)); }
 .banner .big { font-size: calc(34px * var(--ts, 1)); color: #fff; }
 @keyframes slide { 0% { opacity: 0; transform: translateX(-40px); } 15%, 80% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateX(40px); } }
 .hud .weather { font-size: calc(13px * var(--ts, 1)); padding: 3px 8px; border-radius: 6px; background: #0004; color: #bfe4ff; }
 .hud .weather[data-w=rain] { color: #8ec5ff; } .hud .weather[data-w=snow] { color: #fff; background: #ffffff22; }
-button.power { font-family: kenney-mono, monospace; }
+button.power { font-family: var(--font-mono); }
 button.power.ready { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px -2px var(--accent); animation: glow 1.2s ease-in-out infinite alternate; }
 @keyframes glow { to { box-shadow: 0 0 18px 0 var(--accent); } }
 .players.many { gap: 4px; }
@@ -186,7 +188,7 @@ button.ready { border-color: var(--accent); color: var(--accent); }
 .objectives { background: #0003; border-radius: 6px; padding: 4px 8px 8px; margin-bottom: 6px; font-size: calc(13px * var(--ts, 1)); }
 .objectives h3 { margin-top: 4px; }
 .tips p { margin: 6px 0 0; color: #cfe8ff; font-size: calc(12px * var(--ts, 1)); border-left: 3px solid #4d7fa8; padding-left: 6px; }
-.hud .clock { font-family: kenney-mono, monospace; padding: 3px 8px; border-radius: 6px; background: #0004; border: 2px solid var(--c, transparent); }
+.hud .clock { font-family: var(--font-mono); padding: 3px 8px; border-radius: 6px; background: #0004; border: 2px solid var(--c, transparent); }
 .hud .clock.low { color: var(--bad); animation: glow 0.6s ease-in-out infinite alternate; }
 .chat { display: flex; flex-direction: column; gap: 4px; }
 .chatlog { list-style: none; margin: 0; padding: 0; max-height: 140px; overflow: auto; font-size: calc(12px * var(--ts, 1)); }
@@ -234,6 +236,11 @@ html.calm .banner { opacity: 1; }
 .rtable.dmg td input { width: 48px; }
 .rules-main textarea.json { width: 100%; min-height: 50vh; font: calc(12px * var(--ts, 1)) monospace; }
 .tabs button { padding: 4px 10px; }
+/* The font setting: pixel (default), the device's standard font, or OpenDyslexic. */
+html.font-standard { --font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+html.font-dyslexia { --font: OpenDyslexic, system-ui, sans-serif; --font-mono: OpenDyslexic, ui-monospace, monospace; }
+html.font-dyslexia body, html.font-standard body { letter-spacing: 0; }
+html.font-dyslexia .room .code, html.font-dyslexia .codein, html.font-standard .room .code, html.font-standard .codein { letter-spacing: .08em; }
 .toast { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 6; background: #4a2228; border: 2px solid var(--bad); padding: 8px 14px; border-radius: 6px; }
 
 /* editor */

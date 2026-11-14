@@ -2,9 +2,10 @@
 // sound and music. `openSettings` shows them; `apply` puts them into effect.
 
 import * as sound from './sound.js';
+import { setCanvasFonts } from './art.js';
 
 const KEY = 'ot.settings';
-const DEFAULTS = { symbols: false, textSize: 1, calm: false, lang: 'auto' };
+const DEFAULTS = { symbols: false, textSize: 1, calm: false, lang: 'auto', font: 'pixel' };
 
 export function get() {
   try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') }; } catch { return { ...DEFAULTS }; }
@@ -26,6 +27,12 @@ export function apply() {
   const s = get();
   document.documentElement.style.setProperty('--ts', String(s.textSize));
   document.documentElement.classList.toggle('calm', !!s.calm);
+  const root = document.documentElement;
+  root.classList.toggle('font-standard', s.font === 'standard');
+  root.classList.toggle('font-dyslexia', s.font === 'dyslexia');
+  const css = getComputedStyle(root);
+  setCanvasFonts(css.getPropertyValue('--font').trim() || 'kenney, monospace', css.getPropertyValue('--font-mono').trim() || 'kenney-mono, monospace');
+  if (s.font === 'dyslexia') document.fonts?.load('16px OpenDyslexic').catch(() => {});
 }
 
 /** Should motion be kept to a minimum? (the device asks, or the player did) */
@@ -90,6 +97,8 @@ export function settingsPanel(h, onClose) {
   return h('div', { class: 'settings' },
     h('h3', {}, 'Settings'),
     check('symbols', 'Army symbols', 'Each army also gets a shape on its units, buildings and name, for colour-blind players.'),
+    row('Font', 'Pixel (the game’s look), your device’s standard font, or OpenDyslexic, which many people with dyslexia find easier to read.',
+      choose(s.font, [['pixel', 'Pixel'], ['standard', 'Standard'], ['dyslexia', 'Dyslexia-friendly']], v => set({ font: v }))),
     row('Text size', 'Bigger text everywhere outside the board.', choose(s.textSize, [[1, 'Normal'], [1.15, 'Large'], [1.3, 'Larger']], v => set({ textSize: +v }))),
     check('calm', 'Reduce motion', 'No screen shake, bobbing, lunges, rain or water glints.'),
     row("Other players' moves", 'How quickly computer and online moves play out.', choose(speed, [['normal', 'Normal'], ['fast', 'Fast'], ['instant', 'Instant']], v => { try { localStorage.setItem('ot.speed', v); } catch { /* ignore */ } })),

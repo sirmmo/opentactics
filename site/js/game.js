@@ -5,7 +5,7 @@
 // comes from this player, the computer or a peer, goes through `commit`, so
 // all of them are applied and animated in the same order.
 
-import { T, drawTile, drawUnit, factionColor, terrainLayer, redrawTiles } from './art.js';
+import { T, drawTile, drawUnit, factionColor, terrainLayer, redrawTiles, canvasFont } from './art.js';
 import { fingerprint } from './engine.js';
 import * as sound from './sound.js';
 import { snapshot, statsView } from './stats.js';
@@ -1506,7 +1506,7 @@ export class Match {
         ctx.fillStyle = '#1b1a26';
         ctx.fillRect(x * size + size * 0.66, y * size, size * 0.34, size * 0.3);
         ctx.fillStyle = '#fff';
-        ctx.font = `${Math.round(size * 0.28)}px kenney-mono, monospace`;
+        ctx.font = canvasFont(size * 0.28, 'mono');
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(String(u.cargo.length), x * size + size * 0.83, y * size + size * 0.16);
@@ -1537,7 +1537,7 @@ export class Match {
     for (const fx of this.anim.effects) {
       const t = (now - fx.t0) / fx.dur;
       if (fx.kind === 'text') {
-        ctx.font = `${Math.max(10, (fx.big ? 8 : 6) * this.scale)}px kenney, monospace`;
+        ctx.font = canvasFont(Math.max(10, (fx.big ? 8 : 6) * this.scale));
         ctx.textAlign = 'center';
         ctx.lineWidth = Math.max(2, this.scale);
         ctx.strokeStyle = '#1b1a26';
