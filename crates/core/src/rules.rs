@@ -28,6 +28,28 @@ pub struct Rules {
     /// Every player chooses from the same list.
     #[serde(default)]
     pub powers: Vec<PowerDef>,
+    /// Veteran ranks, when a game turns them on: every unit can earn them.
+    #[serde(default)]
+    pub ranks: Ranks,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Ranks {
+    /// Experience needed for rank 1, 2, 3… Experience is damage dealt (in percent of
+    /// a unit), plus a bonus for each kill.
+    pub thresholds: Vec<u32>,
+    /// Extra experience for destroying a unit.
+    #[serde(default)]
+    pub kill_bonus: u32,
+    /// Per rank: percent more damage dealt, and percent less damage taken.
+    pub attack: u32,
+    pub defense: u32,
+}
+
+impl Default for Ranks {
+    fn default() -> Ranks {
+        Ranks { thresholds: vec![100, 250, 450], kill_bonus: 50, attack: 5, defense: 5 }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -458,6 +480,9 @@ pub struct MapUnit {
     /// A name missions can refer to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
+    /// Experience to start with (veterans).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xp: Option<u32>,
     /// Fuel and ammunition to start with, if not full.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fuel: Option<u32>,

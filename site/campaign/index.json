@@ -1,0 +1,40 @@
+{
+ "name": "The Long Winter",
+ "chapters": [
+  {
+   "id": "landfall",
+   "name": "I · Landfall",
+   "description": "Take the beach, then the headquarters.",
+   "intro": "The coast. The landing went well, but the beach is all we have. Inland, the enemy has a headquarters and a factory, and every day we wait they bring in more men. Take it, and the road north is open.",
+   "outro": "The beachhead holds. Survivors talk about the march north: one pass through the mountains, and snow on the way."
+  },
+  {
+   "id": "frozen-pass",
+   "name": "II · Frozen Pass",
+   "description": "Hold the comms tower through the snow.",
+   "intro": "The pass. A blizzard has closed the roads behind us. The comms tower at the top of the pass is ours for now, and while we hold it, every gun we have hits harder. The enemy knows it too.",
+   "outro": "Nine days of snow, and the tower still stands. On the far side of the pass, scouts hear a big gun firing at night."
+  },
+  {
+   "id": "night-raid",
+   "name": "III · Night Raid",
+   "description": "Find and destroy Long Tom in the dark.",
+   "intro": "The woods. Long Tom fires from somewhere east of here, always at night, always gone by morning. The fog is thick. Our recon goes first; everyone else follows its lights.",
+   "outro": "Long Tom is silent. With it gone, the enemy's supply road to the capital lies open, if we can keep our own trucks moving."
+  },
+  {
+   "id": "supply-lines",
+   "name": "IV · Supply Lines",
+   "description": "Get the convoy to the depot.",
+   "intro": "The supply road. Everything we need for the last push is in one carrier. Between it and our depot: an enemy ambush, and not much fuel. Keep it alive.",
+   "outro": "The depot is full. Tomorrow, the capital."
+  },
+  {
+   "id": "the-capital",
+   "name": "V · The Capital",
+   "description": "Take the enemy headquarters.",
+   "intro": "The capital. Snow on the roofs, smoke over the factories. Everyone who made it this far is here.",
+   "outro": "The flag over the capital is ours. The long winter is over."
+  }
+ ]
+}

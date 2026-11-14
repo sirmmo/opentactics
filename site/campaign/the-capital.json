@@ -1,0 +1,196 @@
+{
+ "name": "V · The Capital",
+ "author": "OpenTactics",
+ "description": "Take the enemy headquarters.",
+ "width": 20,
+ "height": 14,
+ "players": 2,
+ "tiles": [
+  "....................",
+  "..c....f.....f....c.",
+  "....=========......F",
+  "H.F.=...^...=..c...H",
+  "....=..f.f..=......F",
+  "..c.=========..c....",
+  "........^...........",
+  "..ff.........ff.....",
+  "....c.........c.....",
+  "....................",
+  "..f....^^....f......",
+  "....................",
+  "..c...........c.....",
+  "...................."
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 1,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "x": 19,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 19,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "x": 19,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "x": 18,
+   "y": 1,
+   "player": 1
+  },
+  {
+   "x": 15,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 15,
+   "y": 5,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "tank",
+   "x": 3,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "artillery",
+   "x": 1,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 3,
+   "y": 6,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 1,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 16,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "type": "tank",
+   "x": 16,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "type": "artillery",
+   "x": 18,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "antiair",
+   "x": 17,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "type": "infantry",
+   "x": 14,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "copter",
+   "x": 17,
+   "y": 1,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "The capital. Their headquarters sits behind two factories on the east edge. Take it and the war is over. Lose ours and it is over the other way.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "capture",
+    "x": 19,
+    "y": 3
+   }
+  ],
+  "fail": [
+   {
+    "type": "lose_tile",
+    "x": 0,
+    "y": 3
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "The enemy here plays at its hardest. Your veterans are worth more than new units: keep them alive."
+   },
+   {
+    "day": 2,
+    "text": "Mechs and infantry capture; tanks and artillery clear the way."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "hard",
+    "style": "balanced"
+   }
+  },
+  "options": {
+   "ranks": true
+  }
+ },
+ "campaign": {
+  "carry": [
+   {
+    "x": 3,
+    "y": 3
+   },
+   {
+    "x": 1,
+    "y": 6
+   },
+   {
+    "x": 3,
+    "y": 8
+   },
+   {
+    "x": 5,
+    "y": 7
+   }
+  ]
+ },
+ "start_funds": 5000
+}

@@ -1059,6 +1059,12 @@ export class Match {
     }
   }
 
+  /** Veteran rank (0-3) when the game has ranks. */
+  rankOf(u) {
+    if (!this.view.options?.ranks || !u.xp) return 0;
+    return (this.rules.ranks?.thresholds || [100, 250, 450]).filter(t => u.xp >= t).length;
+  }
+
   unitName(u) {
     return `${this.rules.factions[u.player]?.name ?? ''} ${this.rules.units[u.kind].name}`.trim();
   }
@@ -1428,6 +1434,7 @@ export class Match {
           unit.cargo?.length ? h('div', { class: 'stats' }, `Carrying ${unit.cargo.map(c => r.units[c.kind].name).join(', ')}`)
             : d.carry?.length ? h('div', { class: 'stats muted' }, `Carries ${d.carry.map(id => r.units.find(x => x.id === id)?.name).join(', ')}`) : null,
           unit.dived ? h('div', { class: 'stats' }, 'Dived: hidden from enemies not next to it') : null,
+          this.view.options?.ranks ? h('div', { class: 'stats' }, this.rankOf(unit) ? `Rank ${this.rankOf(unit)} · ${unit.xp} XP` : `${unit.xp || 0} XP`) : null,
           d.description ? h('div', { class: 'muted small' }, d.description) : null)));
     }
     if (at) {
@@ -1572,6 +1579,13 @@ export class Match {
       else if (symbols) {
         settings.drawSymbol(ctx, u.player, x * size + size * 0.19, y * size + size * 0.81, size * 0.2, '#1b1a26');
         settings.drawSymbol(ctx, u.player, x * size + size * 0.19, y * size + size * 0.81, size * 0.14, factionColor(r, u.player));
+      }
+      const rank = this.rankOf(u);
+      if (rank) {
+        ctx.fillStyle = '#1b1a26';
+        ctx.fillRect(x * size, y * size + size * 0.36, size * 0.2, size * 0.1 * rank + size * 0.04);
+        ctx.fillStyle = '#ffd34d';
+        for (let k = 0; k < rank; k++) ctx.fillRect(x * size + size * 0.03, y * size + size * (0.38 + 0.1 * k), size * 0.14, size * 0.06);
       }
       if (u.cargo?.length) {
         ctx.fillStyle = '#1b1a26';

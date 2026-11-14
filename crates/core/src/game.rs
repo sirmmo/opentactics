@@ -45,6 +45,13 @@ pub struct Unit {
     /// A name missions refer to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<String>,
+    /// Experience (veteran ranks).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub xp: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
 }
 
 fn is_false(b: &bool) -> bool {
@@ -100,6 +107,9 @@ pub struct Options {
     /// Players may offer each other alliances and truces during the game.
     #[serde(default)]
     pub diplomacy: bool,
+    /// Units earn veteran ranks by fighting.
+    #[serde(default)]
+    pub ranks: bool,
 }
 
 fn three() -> u32 {
@@ -538,6 +548,7 @@ impl Game {
             let mut unit = game.fresh_unit(kind, u.player, x, y);
             unit.hp = u.hp.unwrap_or(FULL_HP).clamp(1, FULL_HP);
             unit.tag = u.tag.clone();
+            unit.xp = u.xp.unwrap_or(0);
             unit.fuel = u.fuel.map_or(unit.fuel, |f| f.min(unit.fuel));
             unit.ammo = u.ammo.map_or(unit.ammo, |a| a.min(unit.ammo));
             game.s.units.push(unit);
@@ -638,6 +649,7 @@ impl Game {
             dived: false,
             cargo: vec![],
             tag: None,
+            xp: 0,
         }
     }
 
@@ -966,7 +978,7 @@ impl Game {
 
     /// Damage in percent, given the attacker's health, where the defender
     /// stands and the luck roll.
-    fn damage(&self, attacker_kind: usize, attacker_player: usize, attacker_hp: u32, defender: &Unit, luck: u32) -> u32 {
+    fn damage(&self, attacker_kind: usize, attacker_player: usize, attacker_hp: u32, attacker_xp: u32, defender: &Unit, luck: u32) -> u32 {
         let base = self.dmg[attacker_kind][defender.kind];
         if base == 0 {
             return 0;
@@ -975,8 +987,8 @@ impl Game {
         let health = attacker_hp.div_ceil(10);
         let cover = (stars * self.rules.combat.defense_per_star * defender.health() / 10).min(100);
         let raw = (base + luck) * health * (100 - cover) / 1000;
-        let boost = self.attack_bonus(attacker_player) + self.tower_bonus(attacker_player);
-        raw * (100 + boost) / (100 + self.defense_bonus(defender.player))
+        let boost = self.attack_bonus(attacker_player) + self.tower_bonus(attacker_player) + self.rank_bonus(attacker_xp).0;
+        raw * (100 + boost) / (100 + self.defense_bonus(defender.player) + self.rank_bonus(defender.xp).1)
     }
 
     fn has_ammo(&self, unit: &Unit) -> bool {
@@ -1017,11 +1029,11 @@ impl Game {
             if !visible {
                 continue;
             }
-            let min = self.damage(unit.kind, unit.player, unit.hp, other, 0);
-            let max = self.damage(unit.kind, unit.player, unit.hp, other, self.rules.combat.luck);
+            let min = self.damage(unit.kind, unit.player, unit.hp, unit.xp, other, 0);
+            let max = self.damage(unit.kind, unit.player, unit.hp, unit.xp, other, self.rules.combat.luck);
             let mut counter = 0;
             if min < other.hp && self.can_counter(other, &me, d) {
-                counter = self.damage(other.kind, other.player, other.hp - min, &me, 0);
+                counter = self.damage(other.kind, other.player, other.hp - min, other.xp, &me, 0);
             }
             out.push(Target { unit: other.id, x: other.x, y: other.y, min, max, counter });
         }
@@ -1302,6 +1314,7 @@ impl Game {
         if t.tag.is_none() {
             t.tag = u.tag;
         }
+        t.xp = t.xp.max(u.xp);
         let player = u.player;
         self.s.players[player].funds = self.s.players[player].funds.saturating_add(refund);
         events.push(Event::Join { unit: id, into, hp, refund });
@@ -1313,8 +1326,9 @@ impl Game {
         let dist = distance(a.x, a.y, d.x, d.y);
         let luck = self.rules.combat.luck;
         let roll = if luck > 0 { self.roll(luck + 1) } else { 0 };
-        let damage = self.damage(a.kind, a.player, a.hp, &d, roll).min(d.hp);
+        let damage = self.damage(a.kind, a.player, a.hp, a.xp, &d, roll).min(d.hp);
         self.spend_ammo(attacker);
+        self.gain_xp(attacker, damage, damage >= d.hp);
         self.charge(a.player, d.player, damage, d.kind);
         let left = d.hp - damage;
         events.push(Event::Attack { attacker, defender, damage, hp: left, counter: false });
@@ -1326,8 +1340,9 @@ impl Game {
         let d = self.unit(defender).unwrap().clone();
         if self.can_counter(&d, &a, dist) {
             let roll = if luck > 0 { self.roll(luck + 1) } else { 0 };
-            let back = self.damage(d.kind, d.player, left, &a, roll).min(a.hp);
+            let back = self.damage(d.kind, d.player, left, d.xp, &a, roll).min(a.hp);
             self.spend_ammo(defender);
+            self.gain_xp(defender, back, back >= a.hp);
             self.charge(d.player, a.player, back, a.kind);
             let left = a.hp - back;
             events.push(Event::Attack { attacker: defender, defender: attacker, damage: back, hp: left, counter: true });
@@ -1336,6 +1351,30 @@ impl Game {
             } else {
                 self.unit_mut(attacker).hp = left;
             }
+        }
+    }
+
+    /// A unit's rank (0 = none) with veteran ranks on.
+    pub fn rank(&self, xp: u32) -> u32 {
+        if !self.s.options.ranks {
+            return 0;
+        }
+        self.rules.ranks.thresholds.iter().filter(|t| xp >= **t).count() as u32
+    }
+
+    /// Percent more damage dealt and less taken for a unit with this experience.
+    fn rank_bonus(&self, xp: u32) -> (u32, u32) {
+        let r = self.rank(xp);
+        (r * self.rules.ranks.attack, r * self.rules.ranks.defense)
+    }
+
+    fn gain_xp(&mut self, id: u32, damage: u32, kill: bool) {
+        if !self.s.options.ranks {
+            return;
+        }
+        let bonus = if kill { self.rules.ranks.kill_bonus } else { 0 };
+        if let Some(u) = self.s.units.iter_mut().find(|u| u.id == id) {
+            u.xp = u.xp.saturating_add(damage + bonus);
         }
     }
 

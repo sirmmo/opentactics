@@ -21,6 +21,10 @@ shape; they set the ground and the starting positions, not the rules.
 - **Computer opponents** at three skill levels (Easy, Normal, Hard) and four styles
   (Balanced, Rusher, Turtle, Economist).
 - **Missions**: four tutorial missions and four challenges with their own goals.
+- **Campaign**: "The Long Winter", five chapters with a story; veteran ranks (an option
+  in any game) let your best survivors carry on, stronger, into the next chapter.
+- **Single player comforts**: autosave and Continue, Undo (your actions this turn) and
+  Hint (the hard computer suggests a move).
 - **Replays and stats**: every game can be watched again, saved as a file or opened
   from a link (`?replay=URL`); the end screen charts army, property and income by day.
 - **Online extras**: watchers, chat and emotes (also private), a turn timer, rejoining

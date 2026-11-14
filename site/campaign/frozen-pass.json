@@ -1,0 +1,156 @@
+{
+ "name": "II · Frozen Pass",
+ "author": "OpenTactics",
+ "description": "Hold the comms tower through the snow.",
+ "width": 16,
+ "height": 9,
+ "players": 2,
+ "tiles": [
+  "^^^^^^^^^^^^^^^^",
+  "^^.....^^.....^^",
+  "^.....f..f.....^",
+  "H.F..=====...F.H",
+  "...c.=.T.=..c...",
+  "..f..=====..f...",
+  "^.....f..f.....^",
+  "^^.....^^.....^^",
+  "^^^^^^^^^^^^^^^^"
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 2,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "x": 7,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 15,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 13,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 12,
+   "y": 4,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "tank",
+   "x": 6,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 8,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "artillery",
+   "x": 4,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 12,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "type": "mech",
+   "x": 11,
+   "y": 4,
+   "player": 1
+  },
+  {
+   "type": "infantry",
+   "x": 12,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "type": "artillery",
+   "x": 14,
+   "y": 4,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "The pass is ours, and so is its comms tower: it makes every one of our units hit harder. Hold it until the thaw, nine days. Snow slows everyone.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "day",
+    "day": 10
+   }
+  ],
+  "fail": [
+   {
+    "type": "lose_tile",
+    "x": 7,
+    "y": 4
+   },
+   {
+    "type": "no_units"
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "The comms tower gives its owner +10% damage. If the enemy takes it, we lose."
+   },
+   {
+    "day": 3,
+    "text": "Keep the factory working: snow slows their reinforcements as much as ours."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "normal",
+    "style": "rusher"
+   }
+  },
+  "options": {
+   "ranks": true,
+   "weather": "snow"
+  }
+ },
+ "campaign": {
+  "carry": [
+   {
+    "x": 5,
+    "y": 4
+   },
+   {
+    "x": 6,
+    "y": 3
+   },
+   {
+    "x": 6,
+    "y": 5
+   },
+   {
+    "x": 3,
+    "y": 5
+   }
+  ]
+ },
+ "start_funds": 3000
+}

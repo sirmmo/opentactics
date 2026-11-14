@@ -155,7 +155,7 @@ fn ai_plays_every_map_to_the_end() {
 
 #[test]
 fn ai_plays_every_map_with_every_option() {
-    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard };
+    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard, ranks: true };
     ai_plays_all(options);
 }
 
@@ -476,7 +476,7 @@ fn hard_beats_easy_and_every_style_plays() {
     }
     assert!(hard_wins * 3 >= games * 2, "hard won only {hard_wins} of {games}");
     // Every style finishes games, with every option on.
-    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard };
+    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard, ranks: true };
     for style in [Style::Rusher, Style::Turtle, Style::Economist] {
         let p = Profile { level: Level::Normal, style };
         for (_, text) in two.iter().take(3) {
@@ -750,4 +750,58 @@ fn the_computer_makes_offers() {
     }
     assert!(offers > 0, "no offers in 15 days");
     println!("{offers} offers; {} alliances or truces at day 15", g.s.truces.len());
+}
+
+#[test]
+fn veterans_earn_ranks_and_hit_harder() {
+    let text = r#"{
+      "name": "Vets", "width": 6, "height": 4, "players": 2,
+      "tiles": ["H....H", "......", "......", "......"],
+      "owned": [{"x":0,"y":0,"player":0},{"x":5,"y":0,"player":1}],
+      "units": [
+        {"type":"tank","x":1,"y":1,"player":0,"xp":460},
+        {"type":"tank","x":1,"y":2,"player":0},
+        {"type":"infantry","x":4,"y":1,"player":1},
+        {"type":"infantry","x":4,"y":2,"player":1}
+      ]
+    }"#;
+    let g = setup_game(text, Options { ranks: true, ..Default::default() });
+    let vet = unit_on(&g, 1, 1);
+    let rookie = unit_on(&g, 1, 2);
+    assert_eq!(g.rank(g.unit(vet).unwrap().xp), 3);
+    let hit = |id: u32, y: i32| g.targets(g.unit(id).unwrap(), 3, y).into_iter().next().unwrap().min;
+    assert!(hit(vet, 1) > hit(rookie, 2), "a rank 3 veteran deals more");
+    let mut g2 = g.clone();
+    let target = unit_on(&g2, 4, 2);
+    g2.apply(0, &Action::Move { unit: rookie, x: 3, y: 2, then: Then::Attack(target) }).unwrap();
+    assert!(g2.unit(rookie).unwrap().xp > 0, "fighting gives experience");
+    let off = setup_game(text, Options::default());
+    assert_eq!(off.rank(460), 0, "no ranks unless the game turns them on");
+}
+
+#[test]
+fn campaign_chapters_load_and_finish() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/campaign");
+    let index: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/index.json")).unwrap()).unwrap();
+    for ch in index["chapters"].as_array().unwrap() {
+        let id = ch["id"].as_str().unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/{id}.json")).unwrap()).unwrap();
+        // Veterans from the last chapter stand on the carry tiles.
+        let carry = value["campaign"]["carry"].as_array().unwrap().clone();
+        for (i, c) in carry.iter().enumerate() {
+            let kind = ["tank", "mech", "infantry", "artillery"][i % 4];
+            value["units"].as_array_mut().unwrap().push(serde_json::json!({ "type": kind, "x": c["x"], "y": c["y"], "player": 0, "xp": 300 }));
+        }
+        let mut g = Game::new(rules(), &serde_json::from_value(value).unwrap(), 9).unwrap_or_else(|e| panic!("{id}: {e}"));
+        assert!(g.s.options.ranks, "{id}: ranks are on in the campaign");
+        let mut steps = 0;
+        while !g.s.over {
+            let p = g.s.turn;
+            let a = ai::next_action(&g);
+            g.apply(p, &a).unwrap_or_else(|e| panic!("{id}: {a:?}: {e}"));
+            steps += 1;
+            assert!(steps < 100_000, "{id}: never ends");
+        }
+        println!("{id}: day {}, {}", g.s.day, if g.s.winners.contains(&0) { "won" } else { "lost" });
+    }
 }

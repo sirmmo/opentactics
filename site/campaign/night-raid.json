@@ -1,0 +1,155 @@
+{
+ "name": "III · Night Raid",
+ "author": "OpenTactics",
+ "description": "Find and destroy Long Tom in the dark.",
+ "width": 16,
+ "height": 12,
+ "players": 2,
+ "tiles": [
+  "................",
+  "..ff....ff..ff..",
+  "..ff..^.....ff..",
+  ".......=====....",
+  "H.....=f..f=..F.",
+  "......=f..f=...H",
+  ".......=====....",
+  "..ff........ff..",
+  "..ff..^..ff.ff..",
+  "................",
+  "...ff......ff...",
+  "................"
+ ],
+ "owned": [
+  {
+   "x": 0,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "x": 15,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "x": 14,
+   "y": 4,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "recon",
+   "x": 1,
+   "y": 3,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 1,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 2,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 1,
+   "y": 6,
+   "player": 0
+  },
+  {
+   "type": "artillery",
+   "x": 13,
+   "y": 9,
+   "player": 1,
+   "tag": "Long Tom"
+  },
+  {
+   "type": "infantry",
+   "x": 12,
+   "y": 1,
+   "player": 1
+  },
+  {
+   "type": "mech",
+   "x": 9,
+   "y": 1,
+   "player": 1
+  },
+  {
+   "type": "tank",
+   "x": 13,
+   "y": 7,
+   "player": 1
+  },
+  {
+   "type": "antiair",
+   "x": 12,
+   "y": 8,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "Fog of war, at night. Somewhere in the woods to the east is Long Tom, the big gun that shelled us in the pass. Find it and destroy it before day 10.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "unit_gone",
+    "tag": "Long Tom"
+   }
+  ],
+  "fail": [
+   {
+    "type": "day",
+    "day": 10
+   },
+   {
+    "type": "no_units"
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Your recon sees furthest. Units in forests are only seen from right next to them."
+   },
+   {
+    "day": 2,
+    "text": "Running into a hidden enemy stops your move short: scout ahead first."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "normal",
+    "style": "turtle"
+   }
+  },
+  "options": {
+   "ranks": true,
+   "fog": true
+  }
+ },
+ "campaign": {
+  "carry": [
+   {
+    "x": 2,
+    "y": 2
+   },
+   {
+    "x": 3,
+    "y": 5
+   },
+   {
+    "x": 2,
+    "y": 7
+   },
+   {
+    "x": 4,
+    "y": 4
+   }
+  ]
+ }
+}

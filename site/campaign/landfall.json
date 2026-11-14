@@ -1,0 +1,146 @@
+{
+ "name": "I · Landfall",
+ "author": "OpenTactics",
+ "description": "Take the beach, then the headquarters.",
+ "width": 14,
+ "height": 10,
+ "players": 2,
+ "tiles": [
+  "~~~~~~~~~~~~~~",
+  "~~~ss.....f..~",
+  "~~~s..c....F.~",
+  "~~ss....f..H.~",
+  "~~s...=====.c~",
+  "~~ss..=.f...~~",
+  "~~~s..=..c..~~",
+  "~~~ss.....^~~~",
+  "~~~~~~~~~~~~~~",
+  "~~~~~~~~~~~~~~"
+ ],
+ "owned": [
+  {
+   "x": 11,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "x": 11,
+   "y": 2,
+   "player": 1
+  },
+  {
+   "x": 12,
+   "y": 4,
+   "player": 1
+  }
+ ],
+ "units": [
+  {
+   "type": "infantry",
+   "x": 3,
+   "y": 1,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 3,
+   "y": 2,
+   "player": 0
+  },
+  {
+   "type": "mech",
+   "x": 2,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "tank",
+   "x": 3,
+   "y": 5,
+   "player": 0
+  },
+  {
+   "type": "lander",
+   "x": 1,
+   "y": 4,
+   "player": 0
+  },
+  {
+   "type": "infantry",
+   "x": 8,
+   "y": 3,
+   "player": 1
+  },
+  {
+   "type": "infantry",
+   "x": 10,
+   "y": 5,
+   "player": 1
+  },
+  {
+   "type": "recon",
+   "x": 10,
+   "y": 1,
+   "player": 1
+  }
+ ],
+ "mission": {
+  "briefing": "Winter is coming early, and the enemy holds the coast. Our landing craft are on the beach. Take their headquarters before they dig in.",
+  "player": 0,
+  "goals": [
+   {
+    "type": "capture",
+    "x": 11,
+    "y": 3
+   }
+  ],
+  "fail": [
+   {
+    "type": "day",
+    "day": 12
+   },
+   {
+    "type": "no_units"
+   }
+  ],
+  "hints": [
+   {
+    "day": 1,
+    "text": "Ranks are on: units that fight gain experience and earn up to three chevrons, each worth 5% attack and defence."
+   },
+   {
+    "day": 2,
+    "text": "Your best surviving units will follow you into the next chapter."
+   }
+  ],
+  "ai": {
+   "profile": {
+    "level": "easy",
+    "style": "turtle"
+   }
+  },
+  "options": {
+   "ranks": true
+  }
+ },
+ "campaign": {
+  "carry": [
+   {
+    "x": 4,
+    "y": 1
+   },
+   {
+    "x": 3,
+    "y": 3
+   },
+   {
+    "x": 2,
+    "y": 5
+   },
+   {
+    "x": 4,
+    "y": 7
+   }
+  ]
+ }
+}

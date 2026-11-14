@@ -1,7 +1,7 @@
 // Menus, setup, online rooms and the hand-off to the battle screen and editor.
 
 import { Engine } from './engine.js';
-import { loadArt, preview, factionColor } from './art.js';
+import { loadArt, preview, factionColor, drawUnit } from './art.js';
 import { Match, h, $ } from './game.js';
 import { Editor } from './editor.js';
 import * as net from './net.js';
@@ -154,6 +154,112 @@ function readFile(accept) {
 
 // ---- screens -------------------------------------------------------------
 
+// ---- campaign ----
+
+const CAMPAIGN = 'ot.campaign';
+function campaignProgress() {
+  try { return { done: [], roster: [], ...JSON.parse(localStorage.getItem(CAMPAIGN) || '{}') }; } catch { return { done: [], roster: [] }; }
+}
+function saveCampaign(progress) {
+  try { localStorage.setItem(CAMPAIGN, JSON.stringify(progress)); } catch { /* storage blocked */ }
+}
+
+async function campaignScreen() {
+  leaveEverything();
+  history.replaceState(null, '', location.pathname);
+  document.body.dataset.screen = 'setup';
+  app.replaceChildren(h('p', { class: 'loading' }, 'Loading…'));
+  let camp, rules;
+  try { [camp, rules] = await Promise.all([fetchJson('campaign/index.json'), fetchJson(BUNDLED_RULES[0].url)]); } catch (e) { return app.replaceChildren(h('div', { class: 'error' }, e.message)); }
+  const prog = campaignProgress();
+  const open = camp.chapters.findIndex(c => !prog.done.includes(c.id));
+  const roster = h('div', { class: 'roster' }, prog.roster.length
+    ? prog.roster.map(v => {
+      const k = rules.units.findIndex(u => u.id === v.type);
+      const icon = h('canvas', { width: 32, height: 32 });
+      const c = icon.getContext('2d');
+      c.imageSmoothingEnabled = false;
+      if (k >= 0) drawUnit(c, rules, k, 0, 0, 0, 32);
+      const rank = (rules.ranks?.thresholds || [100, 250, 450]).filter(t => v.xp >= t).length;
+      return h('div', { class: 'vet' }, icon, h('span', {}, rules.units[k]?.name || v.type), h('small', { class: 'chev' }, '▲'.repeat(rank) || '—'), h('small', { class: 'muted' }, `${v.xp} XP`));
+    })
+    : h('p', { class: 'muted small' }, 'No veterans yet. Win a chapter and your best surviving units join you.'));
+  app.replaceChildren(h('div', { class: 'setup-screen' },
+    h('header', { class: 'bar' }, h('button', { onclick: menu }, '← Back'), h('h2', {}, camp.name), h('div', { class: 'spacer' }),
+      h('button', { class: 'quiet', onclick: () => { if (confirm('Start the campaign over? Progress and veterans are lost.')) { saveCampaign({ done: [], roster: [] }); campaignScreen(); } } }, 'Start over')),
+    h('div', { class: 'missions' },
+      h('h3', {}, 'Chapters'),
+      h('div', { class: 'mission-list' }, camp.chapters.map((ch, i) => {
+        const done = prog.done.includes(ch.id), locked = open >= 0 && i > open;
+        return h('button', { class: `mission${done ? ' done' : ''}`, disabled: locked, onclick: () => chapterIntro(ch, rules) },
+          h('b', {}, ch.name), h('small', {}, locked ? 'Win the chapter before to unlock it.' : ch.description),
+          done ? h('span', { class: 'tick', title: 'Completed' }, '✓') : locked ? h('span', { class: 'tick' }, '🔒') : null);
+      })),
+      h('h3', {}, 'Veterans'), roster,
+      open < 0 ? h('p', { class: 'good' }, 'The long winter is over: every chapter won.') : null)));
+}
+
+/** The chapter's story and briefing, then play it. */
+async function chapterIntro(ch, rules) {
+  let map;
+  try { map = await fetchJson(`campaign/${ch.id}.json`); } catch (e) { return alert(e.message); }
+  const box = h('div', { class: 'popup menu briefing' },
+    h('div', { class: 'title big' }, ch.name),
+    h('p', { class: 'story' }, ch.intro),
+    h('p', {}, map.mission.briefing),
+    h('ul', { class: 'goals' }, goalLines(map, rules).map(([bad, text]) => h('li', { class: bad ? 'bad' : '' }, text))),
+    h('button', { class: 'primary', onclick: () => playChapter(ch, map, rules) }, 'Start'),
+    h('button', { class: 'quiet', onclick: () => box.remove() }, 'Back'));
+  app.querySelector('.setup-screen').append(box);
+}
+
+/** Play a chapter: veterans from the roster take the carry tiles. */
+async function playChapter(ch, map, rules, resumeFrom = null) {
+  const prog = campaignProgress();
+  const full = structuredClone(map);
+  if (!resumeFrom) {
+    const glyph = (x, y) => full.tiles[y][x];
+    const spots = (full.campaign?.carry || []).filter(c => !full.units.some(u => u.x === c.x && u.y === c.y));
+    for (const v of prog.roster) {
+      const def = rules.units.find(u => u.id === v.type);
+      const at = spots.findIndex(c => (rules.terrains.find(t => t.glyph === glyph(c.x, c.y))?.move_cost[def?.move_type] || 0) > 0);
+      if (!def || at < 0) continue;
+      const [c] = spots.splice(at, 1);
+      full.units.push({ type: v.type, x: c.x, y: c.y, player: full.mission.player, xp: v.xp });
+    }
+  }
+  const camp = await fetchJson('campaign/index.json');
+  const next = camp.chapters[camp.chapters.findIndex(c => c.id === ch.id) + 1];
+  playMission(`campaign:${ch.id}`, full, rules, [], resumeFrom, {
+    resume: { chapter: ch, map: full },
+    menu: [
+      { label: 'Restart chapter', action: () => playChapter(ch, map, rules) },
+      { label: 'Campaign', action: campaignScreen },
+      { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this chapter?')) menu(); } },
+    ],
+    onWin: state => {
+      // The best survivors (by experience) carry on, four at most.
+      const me = full.mission.player;
+      const mine = state.units.filter(u => u.player === me).flatMap(u => [u, ...(u.cargo || [])]);
+      const vets = mine.map(u => ({ type: rules.units[u.kind].id, xp: u.xp || 0 }))
+        .sort((a, b) => b.xp - a.xp).slice(0, 4).filter(v => v.xp > 0);
+      const p = campaignProgress();
+      if (!p.done.includes(ch.id)) p.done.push(ch.id);
+      p.roster = vets;
+      saveCampaign(p);
+      setTimeout(() => {
+        const box = h('div', { class: 'popup menu briefing' },
+          h('div', { class: 'title big' }, ch.name),
+          h('p', { class: 'story' }, ch.outro),
+          vets.length ? h('p', { class: 'muted small' }, `${vets.length} veteran${vets.length === 1 ? '' : 's'} will join you in the next chapter.`) : null,
+          next ? h('button', { class: 'primary', onclick: () => { box.remove(); campaignScreen().then(() => chapterIntro(next, rules)); } }, `Next: ${next.name}`) : null,
+          h('button', { onclick: () => { box.remove(); campaignScreen(); } }, 'Campaign'));
+        app.append(box);
+      }, 1500);
+    },
+  });
+}
+
 // ---- missions ----
 
 const DONE_KEY = 'ot.missions';
@@ -226,7 +332,7 @@ function goalLines(map, rules) {
   return lines;
 }
 
-function playMission(id, map, rules, list, resumeFrom = null) {
+function playMission(id, map, rules, list, resumeFrom = null, hooks = {}) {
   leaveEverything();
   const m = map.mission;
   let res;
@@ -245,15 +351,18 @@ function playMission(id, map, rules, list, resumeFrom = null) {
   let saved = false;
   match = new Match(root, {
     engine, rules, state: res.state, income: res.income, seats, driver: true, onWatch: watchReplay,
-    undoable: true, onApplied: id === 'editor' ? undefined : autosaver(rules, { mission: { id, map } }),
-    menu: [
+    undoable: true, onApplied: id === 'editor' ? undefined : autosaver(rules, hooks.resume || { mission: { id, map } }),
+    menu: hooks.menu || [
       { label: 'Restart mission', action: () => playMission(id, map, rules, list) },
       ...(next ? [{ label: `Next: ${next.name}`, action: () => missionsScreen().then(() => briefing(next.id, list)) }] : []),
       { label: 'All missions', action: missionsScreen },
       { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this mission?')) menu(); } },
     ],
     onHud: view => {
-      if (view.over && !saved && view.winners?.includes(m.player)) { saved = true; markMissionDone(id); }
+      if (view.over && !saved && view.winners?.includes(m.player)) {
+        saved = true;
+        if (hooks.onWin) hooks.onWin(engine.call({ op: 'state' }).state); else markMissionDone(id);
+      }
       const tips = (m.hints || []).filter(t => (t.day ?? 1) <= view.day).slice(-3).reverse();
       return h('div', { class: 'objectives' },
         h('h3', {}, 'Objectives'),
@@ -289,6 +398,7 @@ function downloadSave(rules, seats) {
 
 /** Carry on a saved game on this device. Online seats become seats for people here. */
 function continueSave(save) {
+  if (save.resume?.chapter) return playChapter(save.resume.chapter, save.resume.map, save.rules, save);
   if (save.resume?.mission) return playMission(save.resume.mission.id, save.resume.mission.map, save.rules, [], save);
   leaveEverything();
   let res;
@@ -409,6 +519,7 @@ function menu() {
       ...(autosaved() ? [h('button', { class: 'primary big', onclick: () => continueSave(autosaved()) }, 'Continue',
         h('small', {}, `${autosaved().state.name}, day ${autosaved().state.day}`))] : []),
       h('button', { class: `${autosaved() ? '' : 'primary '}big`, onclick: () => setup('local') }, 'Play', h('small', {}, 'Against the computer, or take turns on one screen')),
+      h('button', { class: 'big', onclick: () => campaignScreen() }, 'Campaign', h('small', {}, 'The Long Winter: five battles, and veterans who carry on')),
       h('button', { class: 'big', onclick: () => missionsScreen() }, 'Missions', h('small', {}, 'Tutorial and challenges, one step at a time')),
       h('button', { class: 'big', onclick: () => setup('host') }, 'Host online', h('small', {}, 'Open a room and share its code')),
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
@@ -591,6 +702,7 @@ async function setup(mode, preset = {}) {
     items.push(
       box('fog', 'Fog of war', 'You only see what your units and property see.'),
       box('supply', 'Fuel and ammo', 'Units run out; aircraft and ships are lost with empty tanks. Refill at your property or next to a carrier.'));
+    items.push(box('ranks', 'Veteran ranks', 'Units that fight gain experience and up to three ranks, each worth 5% attack and defence.'));
     if (r.powers?.length) items.push(box('powers', 'Powers', `Charge up by fighting, then use one of ${r.powers.length} powers. Everyone picks from the same list.`));
     if (r.weather?.length > 1) {
       if (o.weather !== 'off' && o.weather !== 'random' && !r.weather.some(w => w.id === o.weather)) o.weather = 'off';
@@ -687,6 +799,7 @@ async function setup(mode, preset = {}) {
     const o = cfg.options, list = [];
     if (o.mode && o.mode !== 'standard') list.push(o.mode.replace(/_/g, ' '));
     if (o.diplomacy) list.push('diplomacy');
+    if (o.ranks) list.push('veteran ranks');
     if (o.simultaneous) list.push('far players moving at once');
     if (o.fog) list.push('fog of war');
     if (o.supply) list.push('fuel and ammo');
