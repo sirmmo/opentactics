@@ -62,6 +62,10 @@ impl Profile {
     }
 }
 
+/// The hard level fields one capturer fewer than the others: more fighters early wins more
+/// games (measured: 31 of 44 against normal on the 2-player maps, from 22).
+const HARD_EXTRA: isize = -1;
+
 pub fn next_action(g: &Game) -> Action {
     next_action_with(g, &Profile::default())
 }
@@ -83,6 +87,9 @@ pub fn next_action_for(real: &Game, me: usize, p: &Profile) -> Action {
     // Answer diplomatic offers first.
     if let Some(o) = real.s.offers.iter().find(|o| o.to == me) {
         return answer(real, me, o);
+    }
+    if let Some(a) = propose(g, me) {
+        return a;
     }
     if let Some(a) = power_action(g, me, p) {
         return a;
@@ -134,6 +141,48 @@ fn answer(g: &Game, me: usize, o: &Offer) -> Action {
     } else {
         Action::Decline { from: o.from }
     }
+}
+
+/// With diplomacy on and three or more sides left, now and then offer a deal:
+/// an alliance against a runaway leader, or a truce with the nearest rival to
+/// fight on one front. At most one open offer, every few days.
+fn propose(g: &Game, me: usize) -> Option<Action> {
+    if !g.s.options.diplomacy || g.s.offers.iter().any(|o| o.from == me) || !(g.s.day + me as u32).is_multiple_of(4) {
+        return None;
+    }
+    let alive: Vec<usize> = (0..g.s.players.len()).filter(|p| g.s.players[*p].alive).collect();
+    let mut teams: Vec<usize> = alive.iter().map(|p| g.team(*p)).collect();
+    teams.sort_unstable();
+    teams.dedup();
+    if teams.len() < 3 {
+        return None;
+    }
+    // Only one move per turn: offers happen before units act, so once is enough.
+    if g.s.units.iter().any(|u| u.player == me && u.moved) {
+        return None;
+    }
+    let others: Vec<usize> = alive.iter().copied().filter(|p| !g.allied(*p, me)).collect();
+    let leader = alive.iter().copied().max_by_key(|p| g.score(*p))?;
+    if leader != me && g.score(leader) > g.score(me) * 13 / 10 {
+        // Team up with the strongest other non-leader.
+        let partner = others.iter().copied().filter(|p| !g.allied(*p, leader)).max_by_key(|p| g.score(*p))?;
+        return Some(Action::Offer { to: partner, pact: Pact::Alliance });
+    }
+    // A truce with whoever is closest, unless that is the leader we must stop.
+    let mine: Vec<(i32, i32)> = g.s.units.iter().filter(|u| u.player == me).map(|u| (u.x, u.y)).collect();
+    let near = others
+        .iter()
+        .copied()
+        .filter(|p| *p != leader && !g.at_peace(*p, me))
+        .min_by_key(|p| {
+            g.s.units
+                .iter()
+                .filter(|u| u.player == *p)
+                .flat_map(|u| mine.iter().map(move |(x, y)| (u.x - x).abs() + (u.y - y).abs()))
+                .min()
+                .unwrap_or(i32::MAX)
+        })?;
+    Some(Action::Offer { to: near, pact: Pact::Truce { days: 4 } })
 }
 
 /// A small, steady pseudo-random number for the easy level's mistakes.
@@ -683,7 +732,7 @@ fn build_action(g: &Game, me: usize, p: &Profile) -> Option<Action> {
         })
         .count();
     let extra = if p.style == Style::Economist { 2 } else { 0 };
-    let want_capturers = (2 + open_property / 3 + extra).min(6 + extra);
+    let want_capturers = ((2 + open_property / 3 + extra).min(6 + extra) as isize + if p.level == Level::Hard { HARD_EXTRA } else { 0 }).max(1) as usize;
     let transports = mine.iter().filter(|u| g.def(u).slots() > 0).count();
     let want_transport = p.level != Level::Easy && transports == 0 && property_needs_ferry(g, me);
     let carriers = mine.iter().filter(|u| g.def(u).supplies).count();

@@ -719,3 +719,35 @@ fn ai_finishes_every_mode() {
         }
     }
 }
+
+#[test]
+fn hard_beats_normal() {
+    let maps = bundled_maps();
+    let hard = Profile { level: Level::Hard, style: Style::Balanced };
+    let normal = Profile::default();
+    let (mut wins, mut games) = (0, 0);
+    for (_, text) in maps.iter().filter(|(_, t)| map(t).players == 2) {
+        for (seed, seats) in [(1, [hard, normal]), (2, [normal, hard]), (3, [hard, normal]), (4, [normal, hard])] {
+            games += 1;
+            if duel_profiles(text, &seats, Options::default(), seed).is_some_and(|w| seats[w] == hard) {
+                wins += 1;
+            }
+        }
+    }
+    assert!(wins * 10 >= games * 6, "hard won only {wins} of {games} against normal");
+}
+
+#[test]
+fn the_computer_makes_offers() {
+    let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../site/maps/grand-melee.json")).unwrap();
+    let mut g = Game::with_setup(rules(), &map(&text), 2, Setup { options: Options { diplomacy: true, ..Default::default() } }).unwrap();
+    let mut offers = 0;
+    while g.s.day < 15 && !g.s.over {
+        let p = g.s.turn;
+        let a = ai::next_action(&g);
+        offers += usize::from(matches!(a, Action::Offer { .. }));
+        g.apply(p, &a).unwrap();
+    }
+    assert!(offers > 0, "no offers in 15 days");
+    println!("{offers} offers; {} alliances or truces at day 15", g.s.truces.len());
+}

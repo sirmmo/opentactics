@@ -1457,6 +1457,9 @@ impl Game {
         }
         self.s.players[player].alive = false;
         self.s.units.retain(|u| u.player != player);
+        // Their offers and truces go with them.
+        self.s.offers.retain(|o| o.from != player && o.to != player);
+        self.s.truces.retain(|t| t.a != player && t.b != player);
         let to = heir.map(|h| h as i8).unwrap_or(NO_OWNER);
         for o in self.s.owner.iter_mut() {
             if *o == player as i8 {
@@ -1698,10 +1701,10 @@ impl Game {
                     .iter()
                     .position(|o| o.from == from && o.to == player)
                     .ok_or("There is no such offer.")?;
-                let offer = self.s.offers.remove(i);
-                if !self.s.players[from].alive {
+                if !self.s.players[from].alive && matches!(action, Action::Accept { .. }) {
                     return Err("That player is gone.".into());
                 }
+                let offer = self.s.offers.remove(i);
                 if matches!(action, Action::Decline { .. }) {
                     events.push(Event::Pact { what: "decline".into(), from, to: player, pact: Some(offer.pact) });
                     return Ok(());
