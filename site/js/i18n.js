@@ -249,6 +249,10 @@ const IT = {
   'Quad Islands': 'Quattro isole', 'Big Cross': 'Grande croce', Pentagon: 'Pentagono', 'Six Rivers': 'Sei fiumi', 'Hex Isles': 'Sei isole',
   'Octagon Lake': 'Lago ottagonale', 'Eight Isles': 'Otto isole', 'Nine Lands': 'Nove terre', Decagon: 'Decagono', 'Twelve Kingdoms': 'Dodici regni',
   Clockwork: 'Orologeria', 'Sixteen Banners': 'Sedici stendardi', 'Grand Ring': 'Grande anello',
+  // ---- continue, undo, hint ----
+  Continue: 'Continua', Undo_: 'Annulla', Hint: 'Suggerimento', 'Do it': 'Fallo', Thanks: 'Grazie', Undone: 'Annullato',
+  'Take back your last action this turn (U)': 'Annulla la tua ultima azione del turno (U)', 'What would the computer do? (H)': 'Cosa farebbe il computer? (H)',
+  'Nothing more worth doing: end the turn.': 'Non c’è altro da fare: termina il turno.', 'Answer the diplomatic offer.': 'Rispondi all’offerta diplomatica.',
   // ---- engine messages ----
   'It is not your turn.': 'Non è il tuo turno.', 'That unit has already acted.': 'Quell’unità ha già agito.', 'The unit cannot move there.': 'L’unità non può andare lì.',
   'That target is out of reach.': 'Quel bersaglio è fuori portata.', 'Not enough funds.': 'Fondi insufficienti.', 'That cannot be built there.': 'Non si può costruire lì.',
@@ -344,6 +348,9 @@ const IT_PATTERNS = [
   [/^Could not (.+): (.+)$/, (m, a, b) => `Impossibile (${a}): ${tr(b)}`],
   [/^This map cannot be played yet: (.+)$/, 'Questa mappa non si può ancora giocare: $1'], [/^Fix this first: (.+)$/, 'Prima sistema questo: $1'],
   [/^Other players' moves: (.+)$/, (m, a) => `Mosse degli altri: ${tr(a).toLowerCase()}`],
+  [/^Move the (.+) to the marked tile and (.+)\.$/, (m, u, what) => `Porta ${name(u)} sulla casella segnata e ${({ 'capture there': 'conquista lì', 'get aboard': 'sali a bordo', 'join the unit there': 'unisciti all’unità lì', 'let its passengers out': 'fai scendere i passeggeri', dive: 'immergiti', 'resupply its neighbours': 'rifornisci i vicini', 'wait there': 'aspetta lì' })[what] || what.replace(/^attack the (.+)$/, (x, t) => `attacca ${name(t)}`)}.`],
+  [/^Build: (.+), at the marked factory\.$/, 'Costruisci: @1, nella fabbrica segnata.'],
+  [/^Use the power (.+)\.$/, 'Usa il potere @1.'],
   [/^Music: (on|off)$/, (m, a) => `Musica: ${a === 'on' ? 'sì' : 'no'}`],
   [/^(.+): (\d+) units(?: · (.+) active)?$/, (m, a, n, p) => `${name(a)}: ${n} unità${p ? ` · ${name(p)} attivo` : ''}`],
   [/^(.+) \((.)\)$/, (m, a, g) => (IT_WORDS[a] ? `${IT_WORDS[a]} (${g})` : null)],

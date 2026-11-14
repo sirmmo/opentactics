@@ -14,6 +14,36 @@ i18n.start();
 
 const app = $('#app');
 const HOSTED = 'ot.hosted';
+const AUTOSAVE = 'ot.autosave';
+
+/** Keep a local game in the browser after every action, for "Continue". */
+function autosaver(rules, resume) {
+  let last = 0, timer = null;
+  return (player, action, state) => {
+    const write = () => {
+      last = Date.now();
+      try {
+        if (state.over) return localStorage.removeItem(AUTOSAVE);
+        localStorage.setItem(AUTOSAVE, JSON.stringify({
+          format: 'opentactics-save', at: Date.now(), rules, seats: match.seats.map(st => ({ name: st.name, ai: !!st.ai, profile: st.profile })),
+          state: engine.call({ op: 'state' }).state, record: match.record, resume,
+        }));
+      } catch {
+        // Too big for storage with the full record: keep the game without it.
+        try { localStorage.setItem(AUTOSAVE, JSON.stringify({ format: 'opentactics-save', at: Date.now(), rules, seats: match.seats, state: engine.call({ op: 'state' }).state, resume })); } catch { /* give up */ }
+      }
+    };
+    clearTimeout(timer);
+    if (state.over || Date.now() - last > 2000) write(); else timer = setTimeout(write, 2000);
+  };
+}
+
+function autosaved() {
+  try {
+    const s = JSON.parse(localStorage.getItem(AUTOSAVE) || 'null');
+    return s && !s.state.over ? s : null;
+  } catch { return null; }
+}
 let hostTimers = [];
 
 // ---- installing as an app ------------------------------------------------
@@ -196,11 +226,13 @@ function goalLines(map, rules) {
   return lines;
 }
 
-function playMission(id, map, rules, list) {
+function playMission(id, map, rules, list, resumeFrom = null) {
   leaveEverything();
   const m = map.mission;
   let res;
-  try { res = engine.call({ op: 'new', rules, map, seed: Math.floor(Math.random() * 2 ** 31) }); } catch (e) { return alert(e.message); }
+  try {
+    res = resumeFrom ? engine.call({ op: 'load', rules, state: resumeFrom.state }) : engine.call({ op: 'new', rules, map, seed: Math.floor(Math.random() * 2 ** 31) });
+  } catch (e) { return alert(e.message); }
   const profile = m.ai?.profile || { level: 'normal', style: 'balanced' };
   const seats = Array.from({ length: map.players }, (_, i) => i === m.player
     ? { name: myName(), local: true, ai: false }
@@ -213,6 +245,7 @@ function playMission(id, map, rules, list) {
   let saved = false;
   match = new Match(root, {
     engine, rules, state: res.state, income: res.income, seats, driver: true, onWatch: watchReplay,
+    undoable: true, onApplied: id === 'editor' ? undefined : autosaver(rules, { mission: { id, map } }),
     menu: [
       { label: 'Restart mission', action: () => playMission(id, map, rules, list) },
       ...(next ? [{ label: `Next: ${next.name}`, action: () => missionsScreen().then(() => briefing(next.id, list)) }] : []),
@@ -229,6 +262,7 @@ function playMission(id, map, rules, list) {
     },
   });
   match.income = res.income;
+  if (resumeFrom?.record?.start) match.record = resumeFrom.record;
   match.updateHud();
 }
 
@@ -255,21 +289,24 @@ function downloadSave(rules, seats) {
 
 /** Carry on a saved game on this device. Online seats become seats for people here. */
 function continueSave(save) {
+  if (save.resume?.mission) return playMission(save.resume.mission.id, save.resume.mission.map, save.rules, [], save);
   leaveEverything();
   let res;
   try { res = engine.call({ op: 'load', rules: save.rules, state: save.state }); } catch (e) { return alert(`Could not load the game: ${e.message}`); }
-  const seats = save.seats.map((st, i) => ({ name: st.ai ? save.rules.factions[i]?.name || 'Computer' : st.name || 'Player', ai: !!st.ai, local: !st.ai }));
+  const seats = save.seats.map((st, i) => ({ name: st.ai ? save.rules.factions[i]?.name || 'Computer' : st.name || 'Player', ai: !!st.ai, local: !st.ai, profile: st.profile }));
   document.body.dataset.screen = 'play';
   const root = h('div', { class: 'play-screen' });
   app.replaceChildren(root);
   match = new Match(root, {
     engine, rules: save.rules, state: res.state, income: res.income, seats, driver: true, onWatch: watchReplay,
+    undoable: true, onApplied: autosaver(save.rules),
     menu: [
       { label: 'Save game', action: () => downloadSave(save.rules, match.seats) },
       { label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game?')) menu(); } },
     ],
   });
   match.income = res.income;
+  if (save.record?.start && Array.isArray(save.record.actions)) match.record = save.record;
 }
 
 /** Step through a recorded game. */
@@ -369,7 +406,9 @@ function menu() {
   app.replaceChildren(h('div', { class: 'menu-screen' },
     h('div', { class: 'logo' }, h('h1', {}, 'OPEN', h('span', {}, 'TACTICS')), h('p', {}, 'Turn-based skirmish on a grid. Same army for everyone.')),
     h('div', { class: 'choices' },
-      h('button', { class: 'primary big', onclick: () => setup('local') }, 'Play', h('small', {}, 'Against the computer, or take turns on one screen')),
+      ...(autosaved() ? [h('button', { class: 'primary big', onclick: () => continueSave(autosaved()) }, 'Continue',
+        h('small', {}, `${autosaved().state.name}, day ${autosaved().state.day}`))] : []),
+      h('button', { class: `${autosaved() ? '' : 'primary '}big`, onclick: () => setup('local') }, 'Play', h('small', {}, 'Against the computer, or take turns on one screen')),
       h('button', { class: 'big', onclick: () => missionsScreen() }, 'Missions', h('small', {}, 'Tutorial and challenges, one step at a time')),
       h('button', { class: 'big', onclick: () => setup('host') }, 'Host online', h('small', {}, 'Open a room and share its code')),
       h('button', { class: 'big', onclick: () => joinScreen() }, 'Join online', h('small', {}, 'Enter a friend’s room code')),
@@ -835,11 +874,13 @@ async function setup(mode, preset = {}) {
     } });
     const root = h('div', { class: 'play-screen' });
     app.replaceChildren(root);
+    const localSave = autosaver(cfg.rules);
     match = new Match(root, {
       engine, rules: cfg.rules, state: res.state, income: res.income, seats, driver: true, menu: menuItems, onWatch: watchReplay,
       chat: mode === 'host' ? (text, to) => broadcastChat(myName(), cfg.seats.findIndex(st => st.kind === 'local'), text, to) : undefined,
+      undoable: mode !== 'host',
       onApplied: (player, action, state, hash) => {
-        if (mode !== 'host') return;
+        if (mode !== 'host') return localSave(player, action, state);
         for (const g of room?.guests.values() || []) if (g.conn.open) g.conn.send({ t: 'act', player, action, h: hash });
         armTimer(state);
         persist(state);

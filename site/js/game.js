@@ -67,6 +67,7 @@ export class Match {
    * replay   { start, actions }: a recorded game to step through
    * onWatch(record)  open the replay of this game
    * chat(text)  send a chat message (online games); shows a chat box
+   * undoable  offer Undo (games with nobody online) and keep snapshots for it
    */
   constructor(root, o) {
     Object.assign(this, o);
@@ -124,6 +125,9 @@ export class Match {
     this.powerBtn = h('button', { class: 'power hidden', onclick: () => this.openPowers(), title: 'Powers' });
     this.modeEl = h('div', { class: 'mode hidden' });
     this.nextBtn = h('button', { onclick: () => this.nextUnit(), title: 'Next unit that has not moved (N)' }, 'Next unit');
+    this.undoStack = [];
+    this.undoBtn = h('button', { class: 'hidden', onclick: () => this.undo(), title: 'Take back your last action this turn (U)' }, 'Undo');
+    this.hintBtn = h('button', { class: 'hidden', onclick: () => this.hint(), title: 'What would the computer do? (H)' }, 'Hint');
     this.minimap = h('canvas', { class: 'minimap hidden', title: 'Map overview: click or drag to look around' });
     this.diploBtn = h('button', { class: 'hidden', onclick: () => this.openDiplomacy(), title: 'Alliances and truces' }, 'Diplomacy');
     this.curtain = h('div', { class: 'curtain hidden' });
@@ -154,7 +158,7 @@ export class Match {
     const zoomIn = h('button', { class: 'icon', title: 'Zoom in', onclick: () => this.zoom(1) }, '+');
     const zoomOut = h('button', { class: 'icon', title: 'Zoom out', onclick: () => this.zoom(-1) }, '−');
     this.root.replaceChildren(
-      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.nextBtn, this.diploBtn, this.powerBtn, this.endBtn),
+      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.undoBtn, this.hintBtn, this.nextBtn, this.diploBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
         h('div', { class: 'stage' }, this.scroller, this.minimap, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
         h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, this.chatEl, h('h3', {}, 'Log'), this.logEl)),
@@ -236,6 +240,8 @@ export class Match {
       if (e.key === 'Escape') this.cancel();
       if (e.key === 'e' || e.key === 'E') this.endTurn();
       if (e.key === 'n' || e.key === 'N') this.nextUnit();
+      if ((e.key === 'u' || e.key === 'U') && this.undoable) this.undo();
+      if ((e.key === 'h' || e.key === 'H') && this.driver) this.hint();
       if (e.key === '+' || e.key === '=') this.zoom(1);
       if (e.key === '-' || e.key === '_') this.zoom(-1);
       // Arrow keys move a cursor over the board; Enter or Space acts on its tile.
@@ -302,6 +308,60 @@ export class Match {
     const left = this.canvas.offsetLeft + (x + 0.5) * size - sc.clientWidth / 2;
     const top = this.canvas.offsetTop + (y + 0.5) * size - sc.clientHeight / 2;
     sc.scrollTo({ left, top, behavior: smooth ? 'smooth' : 'auto' });
+  }
+
+  /** Take back our last action this turn (games with nobody online). */
+  undo() {
+    if (!this.undoable || this.busy || this.queue.length || !this.undoStack.length) return;
+    const snap = this.undoStack.pop();
+    this.engine.call({ op: 'load', rules: this.rules, state: snap.state });
+    this.record.actions.length = snap.actions;
+    this.stats.length = snap.stats;
+    this.clearUi();
+    this.anim = { moving: null, blink: null, effects: [] };
+    this.setState(this.seen(snap.state), snap.income);
+    this.say('Undone', this.acting() ?? 0);
+    sound.play('select');
+    this.onApplied?.(null, null, snap.state);
+    this.afterIdle();
+  }
+
+  /** Ask the hard computer what it would do in our place, and show it. */
+  hint() {
+    const me = this.acting();
+    if (!this.myTurn() || me == null) return;
+    let action;
+    try { action = this.engine.call({ op: 'ai', player: me, profile: { level: 'hard', style: 'balanced' } }).action; } catch { return; }
+    const r = this.rules, s = this.view;
+    const unit = action.unit != null && action.type === 'move' ? s.units.find(u => u.id === action.unit) : null;
+    let text;
+    if (action.type === 'move' && unit) {
+      const then = action.then;
+      const target = then?.attack != null ? s.units.find(u => u.id === then.attack) : null;
+      const what = target ? `attack the ${this.unitName(target)}` : then === 'capture' ? 'capture there' : then === 'load' ? 'get aboard' : then === 'join' ? 'join the unit there'
+        : then?.unload ? 'let its passengers out' : then === 'dive' ? 'dive' : then === 'supply' ? 'resupply its neighbours' : 'wait there';
+      text = `Move the ${r.units[unit.kind].name} to the marked tile and ${what}.`;
+      this.scrollToTile(action.x, action.y);
+      this.select(unit);
+      const o = this.engine.call({ op: 'options', unit: unit.id, x: action.x, y: action.y });
+      this.ui.path = o.ok ? o.path : null;
+    } else if (action.type === 'build') {
+      text = `Build: ${r.units.find(u => u.id === action.unit)?.name || action.unit}, at the marked factory.`;
+      this.scrollToTile(action.x, action.y);
+    } else if (action.type === 'power') {
+      text = `Use the power ${r.powers.find(p => p.id === action.power)?.name}.`;
+    } else if (action.type === 'end_turn') {
+      text = 'Nothing more worth doing: end the turn.';
+    } else {
+      text = 'Answer the diplomatic offer.';
+    }
+    this.hintShown = { action, at: action.x != null ? [action.x, action.y] : null };
+    fill(this.menuEl,
+      h('div', { class: 'title' }, 'Hint'),
+      h('p', {}, text),
+      h('button', { class: 'primary', onclick: () => { this.menuEl.classList.add('hidden'); this.submit(action); } }, 'Do it'),
+      h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Thanks'));
+    this.menuEl.classList.remove('hidden');
   }
 
   /** Units the acting player has not moved yet. */
@@ -459,6 +519,9 @@ export class Match {
       this.powerBtn.classList.toggle('ready', ready && this.myTurn());
     }
     if (this.onHud) fill(this.extraEl, this.onHud(this.view) || '');
+    this.undoBtn.classList.toggle('hidden', !this.undoable || s.over);
+    this.undoBtn.disabled = !this.undoStack.length || this.busy;
+    this.hintBtn.classList.toggle('hidden', !this.driver || s.over || this.acting() == null);
     const mine = this.myTurn();
     this.endBtn.disabled = !mine;
     const others = act.filter(p => !this.locals.includes(p));
@@ -646,6 +709,14 @@ export class Match {
     if (!this.myTurn()) return;
     this.clearUi();
     const player = this.acting();
+    this.hintShown = null;
+    if (this.undoable) {
+      if (action.type === 'end_turn' || action.type === 'resign') this.undoStack = [];
+      else {
+        const st = this.engine.call({ op: 'state' });
+        this.undoStack.push({ state: st.state, income: st.income, actions: this.record.actions.length, stats: this.stats.length });
+      }
+    }
     if (this.driver) {
       this.commit(player, action, { local: true });
     } else {
@@ -1518,6 +1589,13 @@ export class Match {
       }
     }
 
+    // A hint's destination.
+    if (this.hintShown?.at) {
+      const [hx, hy] = this.hintShown.at;
+      ctx.strokeStyle = `rgba(140,220,255,${0.6 + 0.35 * Math.sin(now / 200)})`;
+      ctx.lineWidth = Math.max(2, this.scale * 1.5);
+      ctx.strokeRect(hx * size + 2, hy * size + 2, size - 4, size - 4);
+    }
     // Mission targets.
     for (const g of [...(s.mission?.goals || []), ...(s.mission?.fail || [])]) {
       if (g.x == null) continue;
