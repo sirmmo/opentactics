@@ -183,8 +183,20 @@ export class Match {
     // Dragging with the mouse pans the board; two fingers pinch to zoom.
     const touches = new Map();
     let drag = null, pinch = null;
+    let press = null;
     this.canvas.addEventListener('pointerdown', e => {
       if (e.pointerType === 'touch') {
+        // Hold a tile to see what is there without selecting it.
+        clearTimeout(press?.timer);
+        const t = tileAt(e);
+        press = t && touches.size === 0 ? { x: e.clientX, y: e.clientY, timer: setTimeout(() => {
+          this.longPressed = true;
+          navigator.vibrate?.(15);
+          const u = this.unitAt(t.x, t.y);
+          if (u) this.inspect(u); else { this.ui = { mode: 'idle' }; this.showInfo(t.x, t.y); }
+          this.hover = t;
+          this.showInfo(t.x, t.y);
+        }, 500) } : null;
         touches.set(e.pointerId, [e.clientX, e.clientY]);
         if (touches.size === 2) {
           const [a, b] = [...touches.values()];
@@ -195,6 +207,7 @@ export class Match {
       }
     });
     this.canvas.addEventListener('pointermove', e => {
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 8) { clearTimeout(press.timer); press = null; }
       if (touches.has(e.pointerId)) {
         touches.set(e.pointerId, [e.clientX, e.clientY]);
         if (pinch && touches.size === 2) {
@@ -218,6 +231,8 @@ export class Match {
       if (key(t?.x, t?.y) !== key(this.hover?.x, this.hover?.y)) { this.hover = t; this.onHover(); }
     });
     const lift = e => {
+      clearTimeout(press?.timer);
+      press = null;
       touches.delete(e.pointerId);
       if (touches.size < 2) pinch = null;
       drag = null;
@@ -227,6 +242,7 @@ export class Match {
     this.canvas.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') { drag = null; this.hover = null; this.onHover(); } });
     this.canvas.addEventListener('click', e => {
       if (this.dragged) { this.dragged = false; return; }
+      if (this.longPressed) { this.longPressed = false; return; }
       const t = tileAt(e);
       if (t) this.onClick(t.x, t.y);
     });
@@ -1297,6 +1313,57 @@ export class Match {
     this.submit({ type: 'move', unit: ui.unit.id, x: ui.dest.x, y: ui.dest.y, then: { unload: ui.drops } });
   }
 
+  // ---- gamepad ------------------------------------------------------------------
+
+  /**
+   * Standard gamepad: d-pad or left stick move the cursor (or the focus in a
+   * menu), A acts, B cancels, X next unit, Y hint, Start ends the turn, Back opens
+   * the menu, LB/RB zoom.
+   */
+  pollGamepad(now) {
+    const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
+    if (!pad) return;
+    const prev = this.padPrev || [];
+    const down = i => !!pad.buttons[i]?.pressed;
+    const pressed = i => down(i) && !prev[i];
+    this.padPrev = pad.buttons.map(b => b.pressed);
+    // Direction, with key-repeat while held.
+    const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0;
+    const dir = down(14) || ax < -0.5 ? [-1, 0] : down(15) || ax > 0.5 ? [1, 0] : down(12) || ay < -0.5 ? [0, -1] : down(13) || ay > 0.5 ? [0, 1] : null;
+    let step = null;
+    if (dir) {
+      const key = dir.join();
+      if (this.padDir !== key) { this.padDir = key; this.padNext = now + 260; step = dir; }
+      else if (now >= this.padNext) { this.padNext = now + 90; step = dir; }
+    } else this.padDir = null;
+    // In a menu or popup: move between its buttons.
+    const open = [this.menuEl, this.popup, this.curtain].find(el => !el.classList.contains('hidden'));
+    if (open) {
+      const buttons = [...open.querySelectorAll('button:not([disabled])')];
+      if (step && buttons.length) {
+        const i = buttons.indexOf(document.activeElement);
+        buttons[(i + (step[0] + step[1] > 0 ? 1 : -1) + buttons.length) % buttons.length].focus();
+      }
+      if (pressed(0)) (buttons.includes(document.activeElement) ? document.activeElement : buttons[0])?.click();
+      if (pressed(1)) this.cancel();
+      return;
+    }
+    if (step) {
+      const c = this.hover || this.ui.dest || this.ui.unit || { x: Math.floor(this.view.width / 2), y: Math.floor(this.view.height / 2) };
+      this.hover = { x: Math.max(0, Math.min(this.view.width - 1, c.x + step[0])), y: Math.max(0, Math.min(this.view.height - 1, c.y + step[1])) };
+      if (!this.onScreen(this.hover.x, this.hover.y)) this.scrollToTile(this.hover.x, this.hover.y, false);
+      this.onHover();
+    }
+    if (pressed(0) && this.hover) this.onClick(this.hover.x, this.hover.y);
+    if (pressed(1)) this.cancel();
+    if (pressed(2)) this.nextUnit();
+    if (pressed(3) && this.driver) this.hint();
+    if (pressed(9)) this.endTurn();
+    if (pressed(8)) this.openMenu();
+    if (pressed(4)) this.zoom(-1);
+    if (pressed(5)) this.zoom(1);
+  }
+
   // ---- guided tutorial ------------------------------------------------------
 
   guideNow() {
@@ -1634,6 +1701,7 @@ export class Match {
 
   loop(now) {
     if (!this.alive) return;
+    this.pollGamepad(now);
     this.draw(now);
     if (!this.lastMini || now - this.lastMini > 200) { this.lastMini = now; this.drawMinimap(); }
     requestAnimationFrame(this.loop);

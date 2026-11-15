@@ -42,7 +42,8 @@ shape; they set the ground and the starting positions, not the rules.
 - **Atmosphere**: battle sounds and chiptune music made with Web Audio; rain, snow and
   water animation.
 - **Accessibility**: army symbols (16 shapes), a choice of font (pixel, standard, or
-  dyslexia-friendly OpenDyslexic), text size, reduce motion, keyboard play.
+  dyslexia-friendly OpenDyslexic), text size, reduce motion, keyboard and gamepad play,
+  hold-to-inspect on touch screens.
 - **Editors**: a random map generator and a mission editor in the map editor; a rules
   editor whose rule sets can be shared as links (`#rules=…`).
 - **Languages**: English and Italian (automatic, or chosen in Settings).

@@ -318,6 +318,7 @@ const IT = {
   'This is your factory. Tap it to build a unit.': 'Questa è la tua fabbrica. Toccala per costruire un’unità.',
   'New units can move from your next turn. Build while you have money, then end your turn.': 'Le nuove unità possono muoversi dal turno successivo. Costruisci finché hai denaro, poi termina il turno.',
   'Your property pays you each turn. Spend it, and stop the raiders before they reach the headquarters.': 'Le tue proprietà ti pagano a ogni turno. Spendi, e ferma i predoni prima che raggiungano il quartier generale.',
+  'Gamepad: d-pad or stick moves the cursor, A acts, B cancels, X next unit, Y hint, Start ends the turn, Back opens the menu, LB and RB zoom. On touch screens, hold a tile to see what is there.': 'Gamepad: croce o levetta muovono il cursore, A agisce, B annulla, X prossima unità, Y suggerimento, Start termina il turno, Back apre il menu, LB e RB zoom. Sui touch screen, tieni premuta una casella per vedere cosa c’è.',
   // ---- engine messages ----
   'It is not your turn.': 'Non è il tuo turno.', 'That unit has already acted.': 'Quell’unità ha già agito.', 'The unit cannot move there.': 'L’unità non può andare lì.',
   'That target is out of reach.': 'Quel bersaglio è fuori portata.', 'Not enough funds.': 'Fondi insufficienti.', 'That cannot be built there.': 'Non si può costruire lì.',

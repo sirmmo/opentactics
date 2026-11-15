@@ -106,5 +106,6 @@ export function settingsPanel(h, onClose) {
     row('Music', 'A little chiptune, made in the browser.', h('input', { type: 'checkbox', checked: sound.musicEnabled(), onchange: e => sound.setMusic(e.target.checked) })),
     row('Language', 'The language of the game.', choose(s.lang || 'auto', [['auto', 'Automatic'], ['en', 'English'], ['it', 'Italiano']], v => { set({ lang: v }); location.reload(); })),
     h('p', { class: 'muted small' }, 'Keyboard: arrow keys move the cursor, Enter or Space acts on that tile, Esc cancels, N picks the next unit, E ends the turn, + and − zoom.'),
+    h('p', { class: 'muted small' }, 'Gamepad: d-pad or stick moves the cursor, A acts, B cancels, X next unit, Y hint, Start ends the turn, Back opens the menu, LB and RB zoom. On touch screens, hold a tile to see what is there.'),
     onClose ? h('button', { class: 'primary', onclick: onClose }, 'Done') : null);
 }
