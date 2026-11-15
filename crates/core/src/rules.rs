@@ -195,9 +195,32 @@ pub struct Terrain {
     /// damage, in percent (a comms tower, say). Anyone can capture it.
     #[serde(default)]
     pub attack_bonus: u32,
+    /// With the "linked holdings" option, the owner can hand this property to a friend
+    /// who runs it in another game (a city sim, a factory game). See HOLDINGS.md.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub holding: Option<HoldingDef>,
     /// How the client draws it. The engine ignores this.
     #[serde(default)]
     pub view: Value,
+}
+
+/// How a property can be run in another game, and how far that may change it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HoldingDef {
+    /// "city" or "factory": which kind of game runs it.
+    pub kind: String,
+    /// Where that game lives; the holding link is this address plus `#holding=…`.
+    #[serde(default)]
+    pub url: String,
+    /// How much time the other game may run per day here, in its own units.
+    #[serde(default)]
+    pub pace: u32,
+    /// The income a report can set is kept between these.
+    pub min: u32,
+    pub max: u32,
+    /// The most a report can take off units built here, in percent.
+    #[serde(default)]
+    pub discount: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -322,6 +345,14 @@ impl Rules {
             }
             if t.move_cost.values().any(|c| *c == 0) {
                 return Err(format!("rules: terrain '{}' has a move cost of 0", t.id));
+            }
+            if let Some(h) = &t.holding {
+                if !t.capturable || h.min > h.max || h.discount > 90 {
+                    return Err(format!(
+                        "rules: terrain '{}' has a bad holding (it must be capturable, min ≤ max, discount ≤ 90)",
+                        t.id
+                    ));
+                }
             }
         }
         let unit_ids: BTreeSet<&String> = self.units.iter().map(|u| &u.id).collect();

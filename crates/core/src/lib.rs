@@ -10,5 +10,5 @@ pub mod ai;
 pub mod game;
 pub mod rules;
 
-pub use game::{Action, Drop, Event, Game, Mode, Offer, Options, Pact, Setup, State, Then, Truce, Unit};
+pub use game::{Action, Drop, Event, Game, Holding, Mode, Offer, Options, Pact, Report, Setup, State, Then, Truce, Unit};
 pub use rules::{MapDef, Rules};

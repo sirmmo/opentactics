@@ -12,6 +12,7 @@ import { snapshot, statsView } from './stats.js';
 import * as settings from './settings.js';
 import { tr } from './i18n.js';
 import * as share from './share.js';
+import * as holdings from './holdings.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -245,6 +246,11 @@ export class Match {
       if (this.longPressed) { this.longPressed = false; return; }
       const t = tileAt(e);
       if (t) this.onClick(t.x, t.y);
+    });
+    // Double-click one of your cities or factories to hand it to a friend (linked holdings).
+    this.canvas.addEventListener('dblclick', e => {
+      const t = tileAt(e);
+      if (t && this.holdingOwner(t.x, t.y) != null) { e.preventDefault(); this.openHolding(t.x, t.y); }
     });
     this.scroller.addEventListener('wheel', e => {
       if (!e.ctrlKey && !e.metaKey) return;
@@ -635,6 +641,7 @@ export class Match {
   afterIdle() {
     if (!this.alive) return;
     this.updateHud();
+    if (!this.replay) this.takeHoldingReports();
     const s = this.view;
     if (s.over && !this.replay) return this.showResult();
     if (s.over && this.replay && this.rIndex >= this.replay.actions.length) this.showResult();
@@ -1007,6 +1014,17 @@ export class Match {
             : `The truce between ${a} and ${b} ends`;
           this.say(text, ev.from);
           if (this.locals.includes(ev.to) || this.locals.includes(ev.from) || ev.what === 'accept' || ev.what === 'leave') this.toast(text);
+          sound.play('tick');
+          break;
+        }
+        case 'holding': {
+          s.holdings = (s.holdings || []).filter(hd => hd.x !== ev.x || hd.y !== ev.y);
+          s.holdings.push({ x: ev.x, y: ev.y, player: ev.player, income: ev.income, discount: ev.discount });
+          const t = this.terrainAt(ev.x, ev.y);
+          const text = `${this.playerName(ev.player)}'s ${t.name.toLowerCase()} at ${ev.x},${ev.y} now pays ${ev.income}/day${ev.discount ? `, units ${ev.discount}% off` : ''}`;
+          this.say(text, ev.player);
+          if (this.locals.includes(ev.player)) this.toast(text);
+          this.effect({ kind: 'ring', at: [ev.x, ev.y], dur: 700, color: factionColor(this.rules, ev.player) });
           sound.play('tick');
           break;
         }
@@ -1528,6 +1546,65 @@ export class Match {
     else this.send(player, action);
   }
 
+  // ---- linked holdings (HOLDINGS.md) ----------------------------------------
+
+  /** The report that counts on (x, y), if any. */
+  holdingAt(x, y) {
+    const s = this.view;
+    return (s.holdings || []).find(hd => hd.x === x && hd.y === y && hd.player === this.ownerAt(x, y));
+  }
+
+  /** The seat on this screen that may develop (x, y), or null. */
+  holdingOwner(x, y) {
+    if (this.replay || !this.view.options?.holdings || !this.view.id || this.view.over) return null;
+    const owner = this.ownerAt(x, y);
+    return this.terrainAt(x, y).holding && owner >= 0 && this.locals.includes(owner) ? owner : null;
+  }
+
+  /** The panel for one holding: the link for a friend, and a place to paste their report. */
+  async openHolding(x, y) {
+    const owner = this.holdingOwner(x, y);
+    if (owner == null) return;
+    const t = this.terrainAt(x, y), def = t.holding, hd = this.holdingAt(x, y);
+    const game = def.kind === 'city' ? 'citysim' : 'OpenFactor';
+    const url = await holdings.holdingLink(this.rules, this.view, x, y, owner);
+    const status = h('div', { class: 'muted small' });
+    const paste = h('input', { type: 'text', placeholder: 'Paste the report link here', style: 'width:100%' });
+    const take = async () => {
+      try {
+        const r = await holdings.parseReport(paste.value);
+        if (!r) throw new Error('Paste the whole link your friend sent (it has #report= in it).');
+        if (r.game !== this.view.id) throw new Error('That report is for another game.');
+        this.menuEl.classList.add('hidden');
+        this.diplo(r.owner ?? owner, holdings.reportAction(r));
+      } catch (e) { status.textContent = tr(e.message); sound.play('error'); }
+    };
+    const what = def.kind === 'city'
+      ? `Your friend builds this city in ${game}. Its tax revenue sets what it pays, between ${def.min} and ${def.max} a day.`
+      : `Your friend runs this ${t.name.toLowerCase()} in ${game}, with a contract to deliver. What they deliver sets what it pays (${def.min} to ${def.max} a day) and takes up to ${def.discount || 0}% off units built here.`;
+    fill(this.menuEl,
+      h('div', { class: 'title' }, hd?.name || `${t.name} ${x},${y}`),
+      h('div', { class: 'muted small' }, what),
+      hd ? h('div', { class: 'small' }, `Now: ${hd.income}/day${hd.discount ? `, units ${hd.discount}% off` : ''} (report from day ${hd.day})`, hd.summary ? h('div', { class: 'muted' }, hd.summary) : null)
+        : h('div', { class: 'small' }, `Now: ${t.income}/day (no report yet)`),
+      h('div', { class: 'muted small' }, `Each day of this war gives them more time to play (${def.pace || (def.kind === 'city' ? 3 : 10)} ${def.kind === 'city' ? 'months' : 'minutes'} a day). Send a new link now and then so they can carry on.`),
+      h('div', { class: 'row' },
+        h('button', { class: 'primary', onclick: () => window.open(url, '_blank', 'noopener') }, `Open in ${game}`),
+        h('button', { onclick: async () => { const res = await share.offer(url, `Run my ${t.name.toLowerCase()} in ${game}`); status.textContent = tr(res === 'copied' ? 'Link copied. Send it to your friend.' : res === 'shared' ? 'Shared.' : 'Could not copy; open it and copy the address.'); } }, 'Copy link for a friend')),
+      h('div', { class: 'small' }, 'When they report, open their link here or paste it:'),
+      h('div', { class: 'row' }, paste, h('button', { onclick: take }, 'Take report')),
+      status,
+      h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
+    this.menuEl.classList.remove('hidden');
+  }
+
+  /** Reports opened from a link while this game was elsewhere: take the ones for our seats. */
+  takeHoldingReports() {
+    if (!this.view.options?.holdings || !this.view.id || this.view.over) return;
+    const reports = holdings.takeReports(this.view.id, r => this.locals.includes(r.owner));
+    for (const r of reports) this.diplo(r.owner, holdings.reportAction(r));
+  }
+
   openPowers() {
     const r = this.rules, s = this.view;
     const me = this.acting() ?? this.viewer();
@@ -1683,6 +1760,14 @@ export class Match {
       if (t.builds?.length) lines.push(h('div', { class: 'muted small' }, `Builds ${t.builds.join(', ')} units`));
       const here = this.unitAt(at.x, at.y);
       if (here?.capture) lines.push(h('div', { class: 'small' }, `Capture ${here.capture}/${r.capture.points}`));
+      if (this.view.options?.holdings && t.holding && owner >= 0) {
+        const hd = this.holdingAt(at.x, at.y);
+        if (hd) lines.push(h('div', { class: 'small holding-line', title: hd.summary || '' },
+          h('b', {}, hd.name || (t.holding.kind === 'city' ? 'Run as a city' : 'Run as a factory')),
+          ` · ${hd.income}/day`, hd.discount ? ` · units ${hd.discount}% off` : '', hd.summary ? h('div', { class: 'muted' }, hd.summary) : null));
+        if (this.holdingOwner(at.x, at.y) != null) lines.push(h('div', { class: 'muted small' },
+          matchMedia('(pointer: coarse)').matches ? 'Double-tap to develop it' : 'Double-click to develop it'));
+      }
       parts.push(h('div', { class: 'terrain' }, ...lines));
     }
     if (!parts.length) {

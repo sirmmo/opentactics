@@ -11,6 +11,7 @@ import { rulesEditor, customRules, rulesFromHash } from './rules-editor.js';
 import * as i18n from './i18n.js';
 import * as share from './share.js';
 import * as cloud from './cloud.js';
+import * as holdings from './holdings.js';
 
 i18n.start();
 
@@ -773,6 +774,7 @@ async function setup(mode, preset = {}) {
     items.push(
       box('fog', 'Fog of war', 'You only see what your units and property see.'),
       box('supply', 'Fuel and ammo', 'Units run out; aircraft and ships are lost with empty tanks. Refill at your property or next to a carrier.'));
+    if (r.terrains?.some(t => t.holding)) items.push(box('holdings', 'Linked holdings', 'Double-click a city or factory you own to hand it to a friend, who runs it in a city or factory game. How they do sets what it pays.'));
     items.push(box('ranks', 'Veteran ranks', 'Units that fight gain experience and up to three ranks, each worth 5% attack and defence.'));
     if (r.powers?.length) items.push(box('powers', 'Powers', `Charge up by fighting, then use one of ${r.powers.length} powers. Everyone picks from the same list.`));
     if (r.weather?.length > 1) {
@@ -893,6 +895,7 @@ async function setup(mode, preset = {}) {
     if (o.mode && o.mode !== 'standard') list.push(o.mode.replace(/_/g, ' '));
     if (o.diplomacy) list.push('diplomacy');
     if (o.ranks) list.push('veteran ranks');
+    if (o.holdings) list.push('linked holdings');
     if (o.simultaneous) list.push('far players moving at once');
     if (o.fog) list.push('fog of war');
     if (o.supply) list.push('fuel and ammo');
@@ -1333,6 +1336,20 @@ async function boot() {
   };
   window.addEventListener('hashchange', openShared);
   if (await openShared()) return;
+  // A report from a friend running one of your cities or factories (#report=…, see HOLDINGS.md).
+  // It waits in this browser until its game is on screen, then goes in as an action.
+  const openReport = async () => {
+    try {
+      const r = await holdings.parseReport(location.hash);
+      if (!r) return;
+      history.replaceState(null, '', location.pathname + location.search);
+      holdings.keepReport(r);
+      if (match?.alive && match.view?.id === r.game) { if (!match.busy) match.takeHoldingReports(); return; }
+      alert(`Report for ${r.name || `the property at ${r.tile.join(',')}`} kept. It is taken when you open that game (${r.map || r.game}).`);
+    } catch (e) { alert(`Could not read the report: ${e.message}`); }
+  };
+  window.addEventListener('hashchange', openReport);
+  await openReport();
   // A game sent by link (#game=…) or a replay (#replay=…).
   const openLinks = async () => {
     try {

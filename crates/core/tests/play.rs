@@ -155,7 +155,7 @@ fn ai_plays_every_map_to_the_end() {
 
 #[test]
 fn ai_plays_every_map_with_every_option() {
-    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard, ranks: true };
+    let options = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, holdings: true, mode: Mode::Standard, ranks: true };
     ai_plays_all(options);
 }
 
@@ -476,7 +476,7 @@ fn hard_beats_easy_and_every_style_plays() {
     }
     assert!(hard_wins * 3 >= games * 2, "hard won only {hard_wins} of {games}");
     // Every style finishes games, with every option on.
-    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, mode: Mode::Standard, ranks: true };
+    let all = Options { fog: true, supply: true, weather: "random".into(), powers: true, teams: vec![], simultaneous: true, diplomacy: true, holdings: true, mode: Mode::Standard, ranks: true };
     for style in [Style::Rusher, Style::Turtle, Style::Economist] {
         let p = Profile { level: Level::Normal, style };
         for (_, text) in two.iter().take(3) {
@@ -804,4 +804,58 @@ fn campaign_chapters_load_and_finish() {
         }
         println!("{id}: day {}, {}", g.s.day, if g.s.winners.contains(&0) { "won" } else { "lost" });
     }
+}
+
+// ---- linked holdings --------------------------------------------------------
+
+use opentactics_core::Report;
+
+fn report(x: i32, y: i32, day: u32, income_pct: u32, discount_pct: u32) -> Action {
+    Action::Report(Report { x, y, day, income_pct, discount_pct, name: "New Town".into(), summary: String::new() })
+}
+
+#[test]
+fn holding_reports_set_income_and_discount_within_limits() {
+    let first = map(include_str!("../../../site/maps/first-contact.json"));
+    let options = Options { holdings: true, ..Options::default() };
+    let mut g = Game::with_setup(rules(), &first, 3, Setup { options }).unwrap();
+    assert_eq!(g.s.id.len(), 8);
+    let base = g.income(0);
+
+    // Off by default.
+    let mut plain = Game::new(rules(), &first, 3).unwrap();
+    assert!(plain.apply(0, &report(3, 1, 1, 200, 0)).is_err());
+
+    // The factory at 3,1 is player 0's. 140% of 1000 → 1400, and the discount is capped at 25%.
+    let ev = g.apply(0, &report(3, 1, 1, 140, 60)).unwrap();
+    assert!(matches!(ev[0], Event::Holding { income: 1400, discount: 25, .. }));
+    assert_eq!(g.income(0), base + 400);
+    let inf = kind(&g, "infantry");
+    let full = g.rules.units[inf].cost;
+    let (_, cost) = g.build_options(0, 3, 1).into_iter().find(|(k, _)| *k == inf).unwrap();
+    assert_eq!(cost, full - full / 4);
+
+    // Clamped to the rule set's range.
+    g.apply(0, &report(3, 1, 1, 10_000, 0)).unwrap();
+    assert_eq!(g.income(0), base + 1000);
+    g.apply(0, &report(3, 1, 1, 0, 0)).unwrap();
+    assert_eq!(g.income(0), base - 500);
+    assert_eq!(g.s.holdings[0].name, "New Town");
+
+    // Not someone else's property, not from the future, not older than the last.
+    assert!(g.apply(1, &report(3, 1, 1, 100, 0)).is_err(), "not the owner");
+    assert!(g.apply(0, &report(3, 1, 9, 100, 0)).is_err(), "a later day");
+    assert!(g.apply(0, &report(1, 1, 1, 100, 0)).is_err(), "not a holding");
+    g.s.day = 4;
+    g.apply(0, &report(3, 1, 4, 100, 0)).unwrap();
+    assert!(g.apply(0, &report(3, 1, 2, 200, 0)).is_err(), "older than the last report");
+
+    // A report survives the JSON round trip, and stops counting when the tile changes hands.
+    let back = Game::from_state(rules(), serde_json::from_str(&serde_json::to_string(&g.s).unwrap()).unwrap()).unwrap();
+    assert_eq!(back.s.holdings, g.s.holdings);
+    g.apply(0, &report(3, 1, 4, 250, 0)).unwrap();
+    let i = (g.s.width + 3) as usize;
+    g.s.owner[i] = 1;
+    assert_eq!(g.income(0), base - 1000);
+    assert_eq!(g.income(1), plain.income(1) + 1000, "the new owner gets the plain income");
 }

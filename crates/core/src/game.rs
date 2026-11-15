@@ -110,6 +110,10 @@ pub struct Options {
     /// Units earn veteran ranks by fighting.
     #[serde(default)]
     pub ranks: bool,
+    /// Owners may hand cities and factories to friends who run them in other games;
+    /// their reports set what the property pays (see HOLDINGS.md).
+    #[serde(default)]
+    pub holdings: bool,
 }
 
 fn three() -> u32 {
@@ -184,6 +188,26 @@ pub struct Offer {
     pub pact: Pact,
 }
 
+/// A property run in another game, as its last report left it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Holding {
+    pub x: i32,
+    pub y: i32,
+    /// The owner who reported it; it counts only while they still own the tile.
+    pub player: usize,
+    /// The day of the holding link the report answered.
+    pub day: u32,
+    /// Paid each turn in place of the terrain's income.
+    pub income: u32,
+    /// Percent off units built here.
+    #[serde(default)]
+    pub discount: u32,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub summary: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Truce {
     pub a: usize,
@@ -241,6 +265,12 @@ pub struct State {
     pub offers: Vec<Offer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub truces: Vec<Truce>,
+    /// Identifies this game in holding links: made from the seed and the map.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    /// Properties run in other games (with the holdings option).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub holdings: Vec<Holding>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -275,8 +305,26 @@ pub enum Action {
         from: usize,
     },
     LeaveAlliance,
+    /// A report from a friend running one of the player's properties in another
+    /// game. Allowed at any time, like diplomacy.
+    Report(Report),
     EndTurn,
     Resign,
+}
+
+/// What a holding's report says (see HOLDINGS.md, section 6).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Report {
+    pub x: i32,
+    pub y: i32,
+    pub day: u32,
+    pub income_pct: u32,
+    #[serde(default)]
+    pub discount_pct: u32,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub summary: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -337,6 +385,8 @@ pub enum Event {
     /// Diplomacy: what happened between two players ("offer", "accept", "decline", "leave", "truce_over").
     Pact { what: String, from: usize, to: usize, pact: Option<Pact> },
     Power { player: usize, power: usize },
+    /// A holding report was taken: the tile now pays `income` and takes `discount` percent off.
+    Holding { player: usize, x: i32, y: i32, income: u32, discount: u32 },
     Turn { player: usize, day: u32, income: u32 },
     Defeat { player: usize },
     Over { winner: Option<usize>, winners: Vec<usize> },
@@ -408,6 +458,16 @@ const DIRS: [(i32, i32); 4] = [(0, -1), (1, 0), (0, 1), (-1, 0)];
 
 fn distance(ax: i32, ay: i32, bx: i32, by: i32) -> u32 {
     ((ax - bx).abs() + (ay - by).abs()) as u32
+}
+
+/// A short id for holding links: the same seed and map always give the same one.
+fn game_id(seed: u64, map: &str) -> String {
+    // FNV-1a over the map name, mixed with the seed.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325 ^ seed;
+    for b in map.bytes() {
+        h = (h ^ b as u64).wrapping_mul(0x0100_0000_01b3);
+    }
+    format!("{:08x}", (h ^ (h >> 32)) as u32)
 }
 
 impl Game {
@@ -523,6 +583,8 @@ impl Game {
                 storm: None,
                 offers: vec![],
                 truces: vec![],
+                id: game_id(seed, &map.name),
+                holdings: vec![],
             },
             rules,
         };
@@ -723,8 +785,57 @@ impl Game {
     pub fn income(&self, player: usize) -> u32 {
         (0..self.s.owner.len())
             .filter(|i| self.s.owner[*i] == player as i8)
-            .map(|i| self.rules.terrains[self.s.terrain[i] as usize].income)
+            .map(|i| match self.holding_at(i) {
+                Some(h) => h.income,
+                None => self.rules.terrains[self.s.terrain[i] as usize].income,
+            })
             .sum()
+    }
+
+    /// The report that counts on tile `i`: the option is on and its owner made it.
+    pub fn holding_at(&self, i: usize) -> Option<&Holding> {
+        if !self.s.options.holdings {
+            return None;
+        }
+        let w = self.s.width as usize;
+        self.s
+            .holdings
+            .iter()
+            .find(|h| (h.y as usize) * w + h.x as usize == i && self.s.owner[i] == h.player as i8)
+    }
+
+    fn report(&mut self, player: usize, r: &Report, events: &mut Vec<Event>) -> Result<(), String> {
+        if !self.s.options.holdings {
+            return Err("Linked holdings are off in this game.".into());
+        }
+        if !self.inside(r.x, r.y) {
+            return Err("That tile is off the map.".into());
+        }
+        let def = self.terrain(r.x, r.y).holding.clone().ok_or("That tile cannot be run as a holding.")?;
+        if self.owner(r.x, r.y) != Some(player) {
+            return Err("That property is not yours.".into());
+        }
+        if r.day > self.s.day {
+            return Err("That report is from a later day than this game.".into());
+        }
+        let base = self.terrain(r.x, r.y).income;
+        let income = ((base as u64 * r.income_pct as u64 / 100).min(u32::MAX as u64) as u32).clamp(def.min, def.max);
+        let discount = r.discount_pct.min(def.discount);
+        let mut name: String = r.name.chars().take(40).collect();
+        let summary: String = r.summary.chars().take(120).collect();
+        if let Some(k) = self.s.holdings.iter().position(|h| h.x == r.x && h.y == r.y) {
+            let old = &self.s.holdings[k];
+            if old.player == player && r.day < old.day {
+                return Err("A newer report for that property was already taken.".into());
+            }
+            if name.is_empty() && old.player == player {
+                name = old.name.clone();
+            }
+            self.s.holdings.remove(k);
+        }
+        self.s.holdings.push(Holding { x: r.x, y: r.y, player, day: r.day, income, discount, name, summary });
+        events.push(Event::Holding { player, x: r.x, y: r.y, income, discount });
+        Ok(())
     }
 
     pub fn team(&self, player: usize) -> usize {
@@ -1064,12 +1175,13 @@ impl Game {
             return vec![];
         }
         let terrain = self.terrain(x, y);
+        let discount = self.holding_at(self.at(x, y)).map_or(0, |h| h.discount);
         self.rules
             .units
             .iter()
             .enumerate()
             .filter(|(k, u)| terrain.builds.contains(&u.class) && self.cost[*k][self.s.terrain[self.at(x, y)] as usize] > 0)
-            .map(|(k, u)| (k, u.cost))
+            .map(|(k, u)| (k, u.cost - u.cost * discount / 100))
             .collect()
     }
 
@@ -1106,6 +1218,10 @@ impl Game {
         if *action == Action::Resign {
             self.defeat(player, None, &mut events);
             self.settle(&mut events);
+            return Ok(events);
+        }
+        if let Action::Report(r) = action {
+            self.report(player, r, &mut events)?;
             return Ok(events);
         }
         if matches!(action, Action::Offer { .. } | Action::Accept { .. } | Action::Decline { .. } | Action::LeaveAlliance) {
@@ -1426,6 +1542,7 @@ impl Game {
         let i = self.at(x, y);
         let previous = self.owner(x, y);
         self.s.owner[i] = player as i8;
+        self.s.holdings.retain(|h| (h.x, h.y) != (x, y));
         if let Some(loser) = previous {
             if self.terrain(x, y).hq && self.rules.victory.hq_capture {
                 self.defeat(loser, Some(player), events);

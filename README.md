@@ -26,6 +26,12 @@ shape; they set the ground and the starting positions, not the rules.
 - **Play by link**: no need to be online together. Seats can be a "Friend, by link":
   when it is their turn you get a link (or a file) with the whole game; they open it,
   play, and send a link on. Replays can be shared as links too. Nothing goes to a server.
+- **Linked holdings** (an option): double-click a city or factory you own and hand it
+  to a friend who would rather build than fight. They run the city in
+  [citysim](https://ingmmo.com/citysim/play/) or the factory in
+  [OpenFactor](https://ingmmo.com/openfactor/play/) and send back a report link; how
+  well they do sets what that property pays (and, for factories, how cheap its units
+  are), within limits the rule set sets. See [HOLDINGS.md](HOLDINGS.md).
 - **Single player comforts**: autosave and Continue, Undo (your actions this turn) and
   Hint (the hard computer suggests a move).
 - **Replays and stats**: every game can be watched again, saved as a file or opened
@@ -134,6 +140,7 @@ numbers: start money, no luck, a 15-day limit. Fields:
 | | `can_dive`, `dive_fuel`, `detects_dived` | diving hides a unit from enemies not next to it; only detectors hit it |
 | `terrains[]` | `hides`, `vision_bonus{type: n}` | with fog: units here seen only from next door; extra sight |
 | `weather[]` | `id`, `name`, `chance`, `move_extra{type: n}`, `vision` | the first is clear skies |
+| `terrains[]` | `holding{kind, url, pace, min, max, discount}` | with linked holdings: run this property in another game (`kind` "city" or "factory"); reports set its income between `min` and `max` and take up to `discount`% off units built here ([HOLDINGS.md](HOLDINGS.md)) |
 | `powers[]` | `id`, `name`, `charge`, `effects[]` | effects: `attack`/`defense` (percent), `move`/`vision` (tiles), `heal` (hp), `funds`, `resupply`; charge is the value of damage dealt, plus half of damage taken |
 
 Damage = (base + luck roll) × attacker health/10 × (100 − stars × defense_per_star ×
