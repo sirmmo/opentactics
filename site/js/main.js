@@ -352,6 +352,7 @@ function playMission(id, map, rules, list, resumeFrom = null, hooks = {}) {
   let saved = false;
   match = new Match(root, {
     engine, rules, state: res.state, income: res.income, seats, driver: true, onWatch: watchReplay,
+    guide: resumeFrom ? null : m.guide,
     undoable: true, onApplied: id === 'editor' ? undefined : autosaver(rules, hooks.resume || { mission: { id, map } }),
     menu: hooks.menu || [
       { label: 'Restart mission', action: () => playMission(id, map, rules, list) },

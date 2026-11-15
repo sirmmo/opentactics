@@ -31,7 +31,8 @@
    "type": "infantry",
    "x": 1,
    "y": 2,
-   "player": 0
+   "player": 0,
+   "tag": "scout"
   },
   {
    "type": "infantry",
@@ -92,6 +93,30 @@
     "level": "easy",
     "style": "turtle"
    }
-  }
+  },
+  "guide": [
+   {
+    "text": "Cities pay money every turn. Tap this infantry.",
+    "unit": "scout",
+    "until": "select"
+   },
+   {
+    "text": "Move it onto the marked city and choose Capture.",
+    "tile": [
+     2,
+     1
+    ],
+    "until": "capture"
+   },
+   {
+    "text": "A capture needs 20 points; the unit adds its health each turn. End the turn and capture again next turn.",
+    "button": "end",
+    "until": "end_turn"
+   },
+   {
+    "text": "Keep capturing on the way to the enemy headquarters (the marked tile). Taking it wins.",
+    "until": "next"
+   }
+  ]
  }
 }

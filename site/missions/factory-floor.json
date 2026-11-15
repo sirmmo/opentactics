@@ -117,7 +117,26 @@
     "level": "normal",
     "style": "rusher"
    }
-  }
+  },
+  "guide": [
+   {
+    "text": "This is your factory. Tap it to build a unit.",
+    "tile": [
+     1,
+     3
+    ],
+    "until": "build"
+   },
+   {
+    "text": "New units can move from your next turn. Build while you have money, then end your turn.",
+    "button": "end",
+    "until": "end_turn"
+   },
+   {
+    "text": "Your property pays you each turn. Spend it, and stop the raiders before they reach the headquarters.",
+    "until": "next"
+   }
+  ]
  },
  "start_funds": 6000
 }

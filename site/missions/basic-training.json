@@ -20,13 +20,15 @@
    "type": "tank",
    "x": 2,
    "y": 2,
-   "player": 0
+   "player": 0,
+   "tag": "tank"
   },
   {
    "type": "infantry",
    "x": 1,
    "y": 4,
-   "player": 0
+   "player": 0,
+   "tag": "squad"
   },
   {
    "type": "infantry",
@@ -86,6 +88,35 @@
     "level": "easy",
     "style": "turtle"
    }
-  }
+  },
+  "guide": [
+   {
+    "text": "This is your tank. Tap it to see where it can go.",
+    "unit": "tank",
+    "until": "select"
+   },
+   {
+    "text": "White tiles: where it can move. Red: what it could hit from there. Tap a white tile, then choose Wait (the enemy is too far to hit this turn).",
+    "until": "move"
+   },
+   {
+    "text": "Now your infantry. Tap it, tap a tile toward the enemy, and choose Wait.",
+    "unit": "squad",
+    "until": "move"
+   },
+   {
+    "text": "Units that have moved turn grey. When you are done, end your turn.",
+    "button": "end",
+    "until": "end_turn"
+   },
+   {
+    "text": "The enemy moves. When one of your units can reach an enemy, tap a tile next to it and choose Fire, then tap the enemy. The forecast shows the damage.",
+    "until": "attack"
+   },
+   {
+    "text": "That is all there is to fighting. Destroy both squads before day 8. Forests and mountains give cover.",
+    "until": "next"
+   }
+  ]
  }
 }

@@ -8,7 +8,7 @@ out = sys.argv[1]
 
 
 def mission(id, name, desc, rows, *, owned=(), units=(), goals, fail=(), briefing, hints=(),
-            ai=None, options=None, funds=None, tutorial=False):
+            ai=None, options=None, funds=None, tutorial=False, guide=()):
     w = len(rows[0])
     assert all(len(r) == w for r in rows), (id, [len(r) for r in rows])
     m = {
@@ -22,6 +22,9 @@ def mission(id, name, desc, rows, *, owned=(), units=(), goals, fail=(), briefin
             "ai": {"profile": ai or {"level": "normal", "style": "balanced"}},
         },
     }
+    if guide:
+        # Step-by-step guidance for the client: text, what to highlight, what ends the step.
+        m["mission"]["guide"] = list(guide)
     if options is not None:
         m["mission"]["options"] = options
     if funds is not None:
@@ -47,7 +50,7 @@ M.append(mission(
      "............",
      ".f.....f....",
      "............"],
-    units=[U("tank", 2, 2, 0), U("infantry", 1, 4, 0), U("infantry", 3, 4, 0),
+    units=[U("tank", 2, 2, 0, tag="tank"), U("infantry", 1, 4, 0, tag="squad"), U("infantry", 3, 4, 0),
            U("infantry", 9, 2, 1, hp=60), U("infantry", 10, 4, 1, hp=50)],
     goals=[{"type": "no_enemy_units"}], fail=[{"type": "day", "day": 8}],
     briefing="Two enemy squads have strayed into our training ground. Destroy them before day 8.",
@@ -55,7 +58,15 @@ M.append(mission(
            (1, "Tap a white tile to move there, then choose Fire and tap a target, or Wait."),
            (2, "The forecast shows the damage you deal and what comes back. Hurt units hit softer."),
            (3, "Forests and mountains protect whoever stands on them.")],
-    ai={"level": "easy", "style": "turtle"}, tutorial=True))
+    ai={"level": "easy", "style": "turtle"}, tutorial=True,
+    guide=[
+        {"text": "This is your tank. Tap it to see where it can go.", "unit": "tank", "until": "select"},
+        {"text": "White tiles: where it can move. Red: what it could hit from there. Tap a white tile, then choose Wait (the enemy is too far to hit this turn).", "until": "move"},
+        {"text": "Now your infantry. Tap it, tap a tile toward the enemy, and choose Wait.", "unit": "squad", "until": "move"},
+        {"text": "Units that have moved turn grey. When you are done, end your turn.", "button": "end", "until": "end_turn"},
+        {"text": "The enemy moves. When one of your units can reach an enemy, tap a tile next to it and choose Fire, then tap the enemy. The forecast shows the damage.", "until": "attack"},
+        {"text": "That is all there is to fighting. Destroy both squads before day 8. Forests and mountains give cover.", "until": "next"},
+    ]))
 
 M.append(mission(
     "taking-ground", "2 · Taking ground", "Capture property to earn money and win.",
@@ -67,7 +78,7 @@ M.append(mission(
      "..c.....^...",
      "............"],
     owned=[(0, 3, 0), (11, 3, 1)],
-    units=[U("infantry", 1, 2, 0), U("infantry", 1, 4, 0), U("mech", 2, 3, 0),
+    units=[U("infantry", 1, 2, 0, tag="scout"), U("infantry", 1, 4, 0), U("mech", 2, 3, 0),
            U("infantry", 10, 2, 1, hp=40)],
     goals=[{"type": "capture", "x": 11, "y": 3}], fail=[{"type": "day", "day": 10}],
     briefing="Take the enemy headquarters on the far side. Cities on the way pay 1000 a day each.",
@@ -75,7 +86,13 @@ M.append(mission(
            (1, "A capture takes 20 points; a unit adds its health (up to 10) each turn, so two turns at full health."),
            (2, "If the capturing unit moves away or is hurt, progress is lost or slower."),
            (4, "Capturing the enemy headquarters wins at once.")],
-    ai={"level": "easy", "style": "turtle"}, tutorial=True))
+    ai={"level": "easy", "style": "turtle"}, tutorial=True,
+    guide=[
+        {"text": "Cities pay money every turn. Tap this infantry.", "unit": "scout", "until": "select"},
+        {"text": "Move it onto the marked city and choose Capture.", "tile": [2, 1], "until": "capture"},
+        {"text": "A capture needs 20 points; the unit adds its health each turn. End the turn and capture again next turn.", "button": "end", "until": "end_turn"},
+        {"text": "Keep capturing on the way to the enemy headquarters (the marked tile). Taking it wins.", "until": "next"},
+    ]))
 
 M.append(mission(
     "factory-floor", "3 · Factory floor", "Build an army and stop the raid.",
@@ -98,7 +115,12 @@ M.append(mission(
            (1, "Tanks are strong against vehicles, mechs are cheap tank-killers, infantry are cheap and capture."),
            (2, "Every property you own pays you at the start of your turn."),
            (3, "Units on your cities and headquarters are repaired a little each turn, for a share of their price.")],
-    ai={"level": "normal", "style": "rusher"}, tutorial=True))
+    ai={"level": "normal", "style": "rusher"}, tutorial=True,
+    guide=[
+        {"text": "This is your factory. Tap it to build a unit.", "tile": [1, 3], "until": "build"},
+        {"text": "New units can move from your next turn. Build while you have money, then end your turn.", "button": "end", "until": "end_turn"},
+        {"text": "Your property pays you each turn. Spend it, and stop the raiders before they reach the headquarters.", "until": "next"},
+    ]))
 
 M.append(mission(
     "over-the-water", "4 · Over the water", "Transports: board, sail, unload.",

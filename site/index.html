@@ -249,6 +249,12 @@ html.font-dyslexia .room .code, html.font-dyslexia .codein, html.font-standard .
 .good { color: var(--good); }
 .send { display: flex; flex-direction: column; gap: 8px; text-align: left; max-width: 480px; }
 .send input { width: 100%; }
+.guide { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 5; width: min(560px, calc(100% - 24px)); display: flex; gap: 10px; align-items: center;
+  background: #2a2f4a; border: 2px solid #ffe08a; border-radius: 10px; padding: 10px 12px; box-shadow: 0 8px 24px #000a; }
+.guide span:nth-child(2) { flex: 1; }
+.guide .guide-count { color: #ffe08a; font-family: var(--font-mono); font-size: calc(12px * var(--ts, 1)); }
+.guide button { flex: none; padding: 4px 10px; }
+button.guide-target { box-shadow: 0 0 0 3px #ffe08a, 0 0 18px #ffe08a; animation: glow .8s ease-in-out infinite alternate; }
 .toast { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 6; background: #4a2228; border: 2px solid var(--bad); padding: 8px 14px; border-radius: 6px; }
 
 /* editor */

@@ -71,6 +71,8 @@ export class Match {
    * undoable  offer Undo (games with nobody online) and keep snapshots for it
    * onMailTurn(player)  it is the turn of a seat played by link (seat.mail)
    * sendMark(mark)  pass a ping or plan to allies online (else it stays here)
+   * guide     tutorial steps: [{ text, unit?: tag, tile?: [x, y], button?: 'end', until }]
+   *           where until is select, move, attack, capture, build, end_turn or next
    */
   constructor(root, o) {
     Object.assign(this, o);
@@ -103,6 +105,8 @@ export class Match {
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
     this.banner(`Day ${this.view.day}`, this.playerName(this.view.turn), factionColor(this.rules, this.view.turn));
+    this.guideStep = 0;
+    this.renderGuide();
     this.afterIdle();
   }
 
@@ -165,7 +169,7 @@ export class Match {
     this.root.replaceChildren(
       h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.markBtn, this.undoBtn, this.hintBtn, this.nextBtn, this.diploBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
-        h('div', { class: 'stage' }, this.scroller, this.minimap, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
+        h('div', { class: 'stage' }, this.scroller, this.guideEl = h('div', { class: 'guide hidden', role: 'status' }), this.minimap, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
         h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, this.chatEl, h('h3', {}, 'Log'), this.logEl)),
     );
     this.ctx = this.canvas.getContext('2d');
@@ -725,6 +729,12 @@ export class Match {
     this.clearUi();
     const player = this.acting();
     this.hintShown = null;
+    if (action.type === 'move') {
+      const then = action.then;
+      this.guideEvent(then?.attack != null ? 'attack' : then === 'capture' ? 'capture' : 'move');
+      if (then?.attack != null || then === 'capture') this.guideEvent('move');
+    } else if (action.type === 'build') this.guideEvent('build');
+    else if (action.type === 'end_turn') this.guideEvent('end_turn');
     if (this.undoable) {
       if (action.type === 'end_turn' || action.type === 'resign') this.undoStack = [];
       else {
@@ -1146,6 +1156,7 @@ export class Match {
   }
 
   select(unit) {
+    this.guideEvent('select', unit);
     const reach = this.engine.call({ op: 'reach', unit: unit.id });
     const stops = new Set(reach.tiles.filter(t => t[2]).map(t => key(t[0], t[1])));
     const threat = new Set(reach.threat.map(t => key(t[0], t[1])));
@@ -1284,6 +1295,50 @@ export class Match {
     const ui = this.ui;
     if (!ui.drops.length) return this.cancel();
     this.submit({ type: 'move', unit: ui.unit.id, x: ui.dest.x, y: ui.dest.y, then: { unload: ui.drops } });
+  }
+
+  // ---- guided tutorial ------------------------------------------------------
+
+  guideNow() {
+    return this.guide?.[this.guideStep] || null;
+  }
+
+  renderGuide() {
+    const step = this.guideNow();
+    this.endBtn.classList.toggle('guide-target', step?.button === 'end');
+    if (!step) { this.guideEl.classList.add('hidden'); return; }
+    fill(this.guideEl,
+      h('span', { class: 'guide-count' }, `${this.guideStep + 1}/${this.guide.length}`),
+      h('span', {}, step.text),
+      step.until === 'next' ? h('button', { class: 'primary', onclick: () => this.guideEvent('next') }, 'Got it') : null,
+      h('button', { class: 'quiet', title: 'Hide the guide', onclick: () => { this.guideStep = this.guide.length; this.renderGuide(); } }, '×'));
+    this.guideEl.classList.remove('hidden');
+    if (step.unit) {
+      const u = this.view.units.find(x => x.tag === step.unit);
+      if (u) this.scrollToTile(u.x, u.y);
+    } else if (step.tile) this.scrollToTile(step.tile[0], step.tile[1]);
+  }
+
+  /** Something happened; move the guide on if it is what the step waits for. */
+  guideEvent(kind, unit) {
+    const step = this.guideNow();
+    if (!step || step.until !== kind) return;
+    if (kind === 'select' && step.unit && unit?.tag !== step.unit) return;
+    this.guideStep++;
+    sound.play('capture');
+    this.renderGuide();
+  }
+
+  drawGuide(ctx, size, now) {
+    const step = this.guideNow();
+    if (!step) return;
+    let at = step.tile;
+    if (step.unit) { const u = this.view.units.find(x => x.tag === step.unit); if (u) at = [u.x, u.y]; }
+    if (!at) return;
+    const pad = (Math.sin(now / 200) + 1) * this.scale;
+    ctx.strokeStyle = '#ffe08a';
+    ctx.lineWidth = Math.max(2, this.scale * 1.5);
+    ctx.strokeRect(at[0] * size - pad, at[1] * size - pad, size + pad * 2, size + pad * 2);
   }
 
   // ---- pings and plans -----------------------------------------------------
@@ -1827,6 +1882,7 @@ export class Match {
       }
     }
     this.drawMarks(ctx, size, now);
+    this.drawGuide(ctx, size, now);
     this.drawWeather(ctx, s, size, now);
     ctx.restore();
   }
