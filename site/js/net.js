@@ -61,7 +61,9 @@ export async function host(code, { onGuest, onError }) {
 export async function join(code) {
   await loadPeerJs();
   const peer = await openPeer();
-  const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'json' });
+  // 'binary' splits big messages into chunks; 'json' fails on anything over ~16 KB,
+  // and a game state on a large map (with its rules and move record) is bigger.
+  const conn = peer.connect(PREFIX + code, { reliable: true, serialization: 'binary' });
   await new Promise((ok, fail) => {
     const timer = setTimeout(() => fail(new Error('No room with that code answered.')), 15000);
     conn.on('open', () => { clearTimeout(timer); ok(); });

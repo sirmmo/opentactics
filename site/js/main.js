@@ -919,6 +919,9 @@ async function setup(mode, preset = {}) {
       match.commit(seatIndex, msg.action, { onRefused: error => conn.send({ t: 'refused', error }) });
     } else if (msg.t === 'resync' && match) {
       sendSync(conn, guest.token);
+    } else if (msg.t === 'mark' && match) {
+      const seat = cfg.seats.findIndex(st => st.token === guest.token && st.kind === 'peer');
+      if (seat >= 0 && msg.mark && typeof msg.mark === 'object') relayMark({ ...msg.mark, seat });
     } else if (msg.t === 'chat') {
       const now = Date.now();
       if (now - guest.lastChat < 700) return;
@@ -940,6 +943,19 @@ async function setup(mode, preset = {}) {
     }
     const hostSeat = cfg.seats.findIndex(st => st.kind === 'local');
     if (!whisper || to === hostSeat || seat === hostSeat) match?.showChat(name, seat, text, whisper);
+  }
+
+  /** Pings and plans go to the sender's allies only (and to the host if allied). */
+  function relayMark(mark) {
+    if (!match) return;
+    const clean = { kind: String(mark.kind).slice(0, 10), seat: mark.seat, day: mark.day,
+      at: Array.isArray(mark.at) ? mark.at.slice(0, 2).map(n => n | 0) : [0, 0], to: Array.isArray(mark.to) ? mark.to.slice(0, 2).map(n => n | 0) : undefined };
+    for (const g of room?.guests.values() || []) {
+      const gseat = cfg.seats.findIndex(st => st.token === g.token);
+      if (g.conn.open && gseat >= 0 && match.allied(gseat, clean.seat)) g.conn.send({ t: 'mark', mark: clean });
+    }
+    const hostSeat = cfg.seats.findIndex(st => st.kind === 'local');
+    if (hostSeat >= 0 && match.allied(hostSeat, clean.seat)) match.addMark(clean);
   }
 
   // ---- turn timer (host) ----
@@ -1059,6 +1075,7 @@ async function setup(mode, preset = {}) {
       engine, rules: cfg.rules, state: res.state, income: res.income, seats, driver: true, menu: menuItems, onWatch: watchReplay,
       chat: mode === 'host' ? (text, to) => broadcastChat(myName(), cfg.seats.findIndex(st => st.kind === 'local'), text, to) : undefined,
       undoable: mode !== 'host',
+      sendMark: mode === 'host' ? relayMark : undefined,
       onMailTurn: p => sendTurn(match, cfg.rules, p),
       onApplied: (player, action, state, hash) => {
         if (mode !== 'host') return localSave(player, action, state);
@@ -1207,6 +1224,7 @@ function onHostMessage(msg, lobbyEl, statusEl) {
         ],
         send: (player, action) => guestLink.conn.send({ t: 'act', action }),
         chat: (text, to) => guestLink?.conn.open && guestLink.conn.send({ t: 'chat', text, to }),
+        sendMark: mark => guestLink?.conn.open && guestLink.conn.send({ t: 'mark', mark }),
         onDesync: () => { match.setNet('Out of step with the host; fetching the game again…'); guestLink.conn.send({ t: 'resync' }); },
       });
       match.income = res.income;
@@ -1219,6 +1237,8 @@ function onHostMessage(msg, lobbyEl, statusEl) {
     match.commit(msg.player, msg.action, { hash: msg.h, mine: match.seats[msg.player]?.local });
   } else if (msg.t === 'chat' && match) {
     match.showChat(String(msg.name || '?').slice(0, 20), Number.isInteger(msg.seat) ? msg.seat : -1, String(msg.text || '').slice(0, 200), !!msg.whisper);
+  } else if (msg.t === 'mark' && match) {
+    match.addMark(msg.mark);
   } else if (msg.t === 'timer' && match) {
     match.setTimer(msg.turn, msg.left);
   } else if (msg.t === 'refused' && match) {

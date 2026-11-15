@@ -30,6 +30,8 @@ shape; they set the ground and the starting positions, not the rules.
   Hint (the hard computer suggests a move).
 - **Replays and stats**: every game can be watched again, saved as a file or opened
   from a link (`?replay=URL`); the end screen charts army, property and income by day.
+- **Pings and plans**: mark tiles ("Attack here", "Help!", "Going here", "Watch out") and
+  draw arrows that only your allies see (online, the host passes them to allies only).
 - **Online extras**: watchers, chat and emotes (also private), a turn timer, rejoining
   after a dropout, and resuming a hosted game after the host's page reloads.
 - **Game modes**: King of the hill, Battle royale (a closing storm), Survival (co-op

@@ -70,6 +70,7 @@ export class Match {
    * chat(text)  send a chat message (online games); shows a chat box
    * undoable  offer Undo (games with nobody online) and keep snapshots for it
    * onMailTurn(player)  it is the turn of a seat played by link (seat.mail)
+   * sendMark(mark)  pass a ping or plan to allies online (else it stays here)
    */
   constructor(root, o) {
     Object.assign(this, o);
@@ -128,6 +129,8 @@ export class Match {
     this.modeEl = h('div', { class: 'mode hidden' });
     this.nextBtn = h('button', { onclick: () => this.nextUnit(), title: 'Next unit that has not moved (N)' }, 'Next unit');
     this.undoStack = [];
+    this.marks = [];
+    this.markBtn = h('button', { class: 'hidden', onclick: () => this.openMarks(), title: 'Pings and plans for your allies (P)' }, 'Ping');
     this.undoBtn = h('button', { class: 'hidden', onclick: () => this.undo(), title: 'Take back your last action this turn (U)' }, 'Undo');
     this.hintBtn = h('button', { class: 'hidden', onclick: () => this.hint(), title: 'What would the computer do? (H)' }, 'Hint');
     this.minimap = h('canvas', { class: 'minimap hidden', title: 'Map overview: click or drag to look around' });
@@ -160,7 +163,7 @@ export class Match {
     const zoomIn = h('button', { class: 'icon', title: 'Zoom in', onclick: () => this.zoom(1) }, '+');
     const zoomOut = h('button', { class: 'icon', title: 'Zoom out', onclick: () => this.zoom(-1) }, '−');
     this.root.replaceChildren(
-      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.undoBtn, this.hintBtn, this.nextBtn, this.diploBtn, this.powerBtn, this.endBtn),
+      h('header', { class: 'hud' }, menuBtn, this.dayEl, this.weatherEl, this.modeEl, this.clockEl, this.players, h('div', { class: 'spacer' }), zoomOut, zoomIn, this.soundBtn, this.markBtn, this.undoBtn, this.hintBtn, this.nextBtn, this.diploBtn, this.powerBtn, this.endBtn),
       h('main', { class: 'field' },
         h('div', { class: 'stage' }, this.scroller, this.minimap, this.popup, this.bannerEl, this.toastEl, this.menuEl, this.curtain),
         h('aside', { class: 'side' }, this.netEl, this.extraEl = h('div', { class: 'extra' }), this.info, this.chatEl, h('h3', {}, 'Log'), this.logEl)),
@@ -243,6 +246,7 @@ export class Match {
       if (e.key === 'e' || e.key === 'E') this.endTurn();
       if (e.key === 'n' || e.key === 'N') this.nextUnit();
       if ((e.key === 'u' || e.key === 'U') && this.undoable) this.undo();
+      if ((e.key === 'p' || e.key === 'P') && !this.markBtn.classList.contains('hidden')) this.openMarks();
       if ((e.key === 'h' || e.key === 'H') && this.driver) this.hint();
       if (e.key === '+' || e.key === '=') this.zoom(1);
       if (e.key === '-' || e.key === '_') this.zoom(-1);
@@ -524,6 +528,8 @@ export class Match {
     this.undoBtn.classList.toggle('hidden', !this.undoable || s.over);
     this.undoBtn.disabled = !this.undoStack.length || this.busy;
     this.hintBtn.classList.toggle('hidden', !this.driver || s.over || this.acting() == null);
+    const markMe = this.markSeat();
+    this.markBtn.classList.toggle('hidden', s.over || markMe == null || !s.players.some((pl, p) => p !== markMe && pl.alive && this.allied(p, markMe)));
     const mine = this.myTurn();
     this.endBtn.disabled = !mine;
     const others = act.filter(p => !this.locals.includes(p));
@@ -1174,6 +1180,13 @@ export class Match {
   onClick(x, y) {
     const ui = this.ui;
     this.menuEl.classList.add('hidden');
+    if (ui.mode === 'ping') { this.placeMark({ kind: ui.kind, at: [x, y] }); this.clearUi(); return; }
+    if (ui.mode === 'plan') {
+      if (!ui.from) { this.ui = { ...ui, from: [x, y] }; this.toast('Now tap where the arrow ends.'); return; }
+      this.placeMark({ kind: 'plan', at: ui.from, to: [x, y] });
+      this.clearUi();
+      return;
+    }
     if (ui.mode === 'select') {
       if (!ui.stops.has(key(x, y))) return this.clearUi();
       const o = this.engine.call({ op: 'options', unit: ui.unit.id, x, y });
@@ -1271,6 +1284,87 @@ export class Match {
     const ui = this.ui;
     if (!ui.drops.length) return this.cancel();
     this.submit({ type: 'move', unit: ui.unit.id, x: ui.dest.x, y: ui.dest.y, then: { unload: ui.drops } });
+  }
+
+  // ---- pings and plans -----------------------------------------------------
+
+  /** The seat whose pings we send: the one playing now on this device, or ours. */
+  markSeat() {
+    return this.acting() ?? this.viewer() ?? this.locals[0] ?? null;
+  }
+
+  openMarks() {
+    const kinds = [['attack', 'Attack here'], ['help', 'Help!'], ['move', 'Going here'], ['danger', 'Watch out']];
+    fill(this.menuEl,
+      h('div', { class: 'title' }, 'Pings and plans'),
+      h('div', { class: 'muted small' }, 'Only your allies see these.'),
+      ...kinds.map(([k, label]) => h('button', { onclick: () => { this.menuEl.classList.add('hidden'); this.ui = { mode: 'ping', kind: k }; this.toast('Tap a tile.'); } }, label)),
+      h('button', { onclick: () => { this.menuEl.classList.add('hidden'); this.ui = { mode: 'plan' }; this.toast('Tap where the arrow starts.'); } }, 'Draw a plan (arrow)'),
+      h('button', { onclick: () => { this.menuEl.classList.add('hidden'); this.placeMark({ kind: 'clear' }); } }, 'Clear my plans'),
+      h('button', { class: 'quiet', onclick: () => this.menuEl.classList.add('hidden') }, 'Close'));
+    this.menuEl.classList.remove('hidden');
+  }
+
+  placeMark(mark) {
+    const seat = this.markSeat();
+    if (seat == null) return;
+    mark = { ...mark, seat, day: this.view.day };
+    if (this.sendMark) this.sendMark(mark); else this.addMark(mark);
+  }
+
+  /** A ping or plan arrived (ours, or an ally's through the host). */
+  addMark(mark) {
+    if (!mark || typeof mark.seat !== 'number') return;
+    if (mark.kind === 'clear') { this.marks = this.marks.filter(m => m.seat !== mark.seat || m.kind !== 'plan'); return; }
+    if (!['attack', 'help', 'move', 'danger', 'plan'].includes(mark.kind)) return;
+    mark.t0 = performance.now();
+    this.marks.push(mark);
+    if (this.marks.length > 40) this.marks.shift();
+    if (mark.kind !== 'plan') sound.play('tick');
+    const words = { attack: 'wants to attack here', help: 'needs help', move: 'is going here', danger: 'warns of danger', plan: 'drew a plan' };
+    this.say(`${this.playerName(mark.seat)} ${words[mark.kind]}`, mark.seat);
+  }
+
+  drawMarks(ctx, size, now) {
+    const me = this.viewer();
+    const icons = { attack: '⚔', help: '!', move: '➜', danger: '⚠' };
+    this.marks = this.marks.filter(m => m.kind === 'plan' || now - m.t0 < 20000);
+    for (const m of this.marks) {
+      if (me != null && !this.allied(m.seat, me)) continue;
+      const color = factionColor(this.rules, m.seat);
+      const cx = (m.at[0] + 0.5) * size, cy = (m.at[1] + 0.5) * size;
+      ctx.save();
+      if (m.kind === 'plan' && m.to) {
+        const tx = (m.to[0] + 0.5) * size, ty = (m.to[1] + 0.5) * size;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(3, this.scale * 2);
+        ctx.setLineDash([size / 3, size / 5]);
+        ctx.lineDashOffset = -now / 40;
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tx, ty); ctx.stroke();
+        ctx.setLineDash([]);
+        const a = Math.atan2(ty - cy, tx - cx), r = size * 0.4;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx - Math.cos(a - 0.5) * r, ty - Math.sin(a - 0.5) * r);
+        ctx.lineTo(tx - Math.cos(a + 0.5) * r, ty - Math.sin(a + 0.5) * r);
+        ctx.closePath(); ctx.fill();
+      } else {
+        const age = (now - m.t0) / 20000, pulse = (now / 600) % 1;
+        ctx.globalAlpha = Math.max(0.25, 1 - age);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(2, this.scale);
+        ctx.beginPath(); ctx.arc(cx, cy, size * (0.35 + pulse * 0.5), 0, Math.PI * 2); ctx.globalAlpha *= 1 - pulse; ctx.stroke();
+        ctx.globalAlpha = Math.max(0.25, 1 - age);
+        ctx.fillStyle = '#1b1a26';
+        ctx.beginPath(); ctx.arc(cx, cy - size * 0.55, size * 0.28, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = color;
+        ctx.font = `${Math.round(size * 0.36)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(icons[m.kind], cx, cy - size * 0.53);
+      }
+      ctx.restore();
+    }
   }
 
   /** Alliances and truces: offers out, offers in, and leaving an alliance. */
@@ -1732,6 +1826,7 @@ export class Match {
         ctx.globalAlpha = 1;
       }
     }
+    this.drawMarks(ctx, size, now);
     this.drawWeather(ctx, s, size, now);
     ctx.restore();
   }

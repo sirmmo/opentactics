@@ -298,6 +298,11 @@ const IT = {
   'This link is long: if a chat app cuts it, send the file instead (Load replay or save opens it).': 'Il link è lungo: se una chat lo taglia, manda il file (si apre con Carica replay o salvataggio).',
   'Share replay link': 'Condividi il link del replay', 'Replay link copied.': 'Link del replay copiato.', 'Could not copy the link.': 'Impossibile copiare il link.',
   'This game is over.': 'Questa partita è finita.', 'Leave this game? Opening the link again brings you back.': 'Lasci la partita? Riaprendo il link ci ritorni.',
+  // ---- pings and plans ----
+  Ping: 'Segnala', 'Pings and plans for your allies (P)': 'Segnali e piani per i tuoi alleati (P)', 'Pings and plans': 'Segnali e piani',
+  'Only your allies see these.': 'Li vedono solo i tuoi alleati.', 'Attack here': 'Attacca qui', 'Help!': 'Aiuto!', 'Going here': 'Vado qui', 'Watch out': 'Attenzione',
+  'Draw a plan (arrow)': 'Disegna un piano (freccia)', 'Clear my plans': 'Cancella i miei piani', 'Tap a tile.': 'Tocca una casella.',
+  'Tap where the arrow starts.': 'Tocca dove parte la freccia.', 'Now tap where the arrow ends.': 'Ora tocca dove finisce la freccia.',
   // ---- engine messages ----
   'It is not your turn.': 'Non è il tuo turno.', 'That unit has already acted.': 'Quell’unità ha già agito.', 'The unit cannot move there.': 'L’unità non può andare lì.',
   'That target is out of reach.': 'Quel bersaglio è fuori portata.', 'Not enough funds.': 'Fondi insufficienti.', 'That cannot be built there.': 'Non si può costruire lì.',
@@ -401,6 +406,7 @@ const IT_PATTERNS = [
   [/^Send this link to whoever plays (.+)\. They open it, play their turn, and send a link on\.$/, 'Manda questo link a chi gioca con @1. Lo apre, gioca il suo turno e manda avanti un link.'],
   [/^Your turn as (.+)\. When you end it, you get a link for the next player\.$/, 'Tocca a te come @1. Quando finisci il turno avrai un link per il prossimo giocatore.'],
   [/^OpenTactics: (.+)'s turn$/, 'OpenTactics: turno di @1'],
+  [/^(.+) (wants to attack here|needs help|is going here|warns of danger|drew a plan)$/, (m, a, w) => `${name(a)} ${({ 'wants to attack here': 'vuole attaccare qui', 'needs help': 'chiede aiuto', 'is going here': 'va qui', 'warns of danger': 'segnala un pericolo', 'drew a plan': 'ha disegnato un piano' })[w]}`],
   [/^Music: (on|off)$/, (m, a) => `Musica: ${a === 'on' ? 'sì' : 'no'}`],
   [/^(.+): (\d+) units(?: · (.+) active)?$/, (m, a, n, p) => `${name(a)}: ${n} unità${p ? ` · ${name(p)} attivo` : ''}`],
   [/^(.+) \((.)\)$/, (m, a, g) => (IT_WORDS[a] ? `${IT_WORDS[a]} (${g})` : null)],
