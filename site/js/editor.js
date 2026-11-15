@@ -5,6 +5,7 @@
 
 import { T, drawTile, drawUnit, terrainLayer, mapToBoard, factionColor, preview, canvasFont } from './art.js';
 import { generatePlayable } from './mapgen.js';
+import * as cloud from './cloud.js';
 import { h } from './game.js';
 
 const STORE = 'ot.maps';
@@ -76,6 +77,8 @@ export class Editor {
 
     // Publishing needs the optional map server; on a plain static host the button stays hidden.
     const publishBtn = h('button', { class: 'hidden', onclick: () => this.publish() }, 'Publish');
+    const shareBtn = h('button', { class: 'hidden', onclick: () => this.shareCommunity(), title: 'Add this map to the community gallery everyone sees' }, 'Share');
+    cloud.api().then(base => { if (base) shareBtn.classList.remove('hidden'); });
     fetch('api/maps').then(r => r.ok && r.headers.get('content-type')?.includes('json') && publishBtn.classList.remove('hidden')).catch(() => {});
     const toolbar = h('header', { class: 'bar' },
       h('button', { onclick: () => this.onBack() }, '← Menu'),
@@ -87,7 +90,7 @@ export class Editor {
       h('button', { onclick: () => this.undoStep(), title: 'Undo (Ctrl+Z)' }, 'Undo'),
       h('button', { onclick: () => this.save() }, 'Save'),
       h('button', { onclick: () => this.download() }, 'Download'),
-      publishBtn,
+      publishBtn, shareBtn,
       h('button', { class: 'primary', onclick: () => this.test() }, 'Test play'));
 
     this.root.replaceChildren(toolbar, h('main', { class: 'field' },
@@ -533,6 +536,20 @@ export class Editor {
       prompt('Published. Anyone can play it from the map list, or with this link:', `${location.origin}${location.pathname}?map=${encodeURIComponent(link)}`);
     } catch (e) {
       alert(`Could not publish: ${e.message}. (A plain static host has no map library; use Download instead.)`);
+    }
+  }
+
+  /** Add the map to the community gallery on the online service. */
+  async shareCommunity() {
+    const p = this.problem();
+    if (p) return alert(`Fix this first: ${p}`);
+    if (!confirm('Share this map with everyone? It appears in the community maps on every setup screen.')) return;
+    try {
+      const { id } = await cloud.shareMap(this.clean());
+      const link = `${location.origin}${location.pathname}?map=${encodeURIComponent(await cloud.mapUrl(id))}`;
+      prompt('Shared. Anyone can pick it from the map list, or open this link:', link);
+    } catch (e) {
+      alert(`Could not share: ${e.message}`);
     }
   }
 

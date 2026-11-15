@@ -177,6 +177,22 @@ loses) from `capture{x,y}`, `lose_tile{x,y}`, `day{day}`, `no_enemy_units`, `no_
 `hints[{day,text}]` and `ai.profile{level,style}`. Map units may carry a `tag`, `hp`,
 `fuel` and `ammo`.
 
+## Online service (optional)
+
+`worker/` is a small Cloudflare Worker: a list of public rooms (hosts refresh theirs;
+entries expire after two minutes), a community map gallery, and short-lived TURN relay
+credentials for players on strict networks. Games still run browser to browser; the
+service only helps people find each other and share maps. Point the game at it with
+`site/cloud.json` (`{ "api": "https://…workers.dev" }`); with no address, the Join
+screen's open rooms, "List this room publicly", community maps and the editor's Share
+button stay hidden.
+
+    cd worker
+    npx wrangler kv namespace create OT      # put the id in wrangler.toml
+    npx wrangler deploy
+    npx wrangler secret put TURN_KEY_ID      # optional: a TURN key from Realtime
+    npx wrangler secret put TURN_KEY_TOKEN
+
 ## Translations
 
 `site/js/i18n.js` translates the page as it appears: an exact dictionary, plus

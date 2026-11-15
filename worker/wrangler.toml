@@ -1,0 +1,17 @@
+# The OpenTactics online service: public rooms, community maps, TURN credentials.
+# Deploy: npx wrangler deploy (from this folder). The KV namespace id below is
+# filled in when the namespace is created (npx wrangler kv namespace create OT).
+name = "opentactics-api"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+# Pages that may call this service (comma separated; "*" for any).
+ALLOWED_ORIGINS = "https://ingmmo.com,https://sirmmo.github.io,http://localhost:18731"
+
+[[kv_namespaces]]
+binding = "OT"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# TURN relay (optional): create a TURN key under Realtime in the Cloudflare
+# dashboard, then:  npx wrangler secret put TURN_KEY_ID  and  TURN_KEY_TOKEN

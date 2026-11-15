@@ -11,7 +11,7 @@ const CACHE = `opentactics-${BUILD}`;
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'opentactics.wasm',
   'js/main.js', 'js/game.js', 'js/art.js', 'js/engine.js', 'js/editor.js', 'js/net.js', 'js/sound.js',
-  'js/ai-worker.js', 'js/stats.js', 'js/settings.js', 'js/mapgen.js', 'js/rules-editor.js', 'js/i18n.js', 'js/share.js', 'campaign/index.json',
+  'js/ai-worker.js', 'js/stats.js', 'js/settings.js', 'js/mapgen.js', 'js/rules-editor.js', 'js/i18n.js', 'js/share.js', 'js/cloud.js', 'campaign/index.json',
   'vendor/peerjs.min.js', 'rules/default.json', 'rules/blitz.json', 'maps/index.json',
   'assets/tiles.png', 'assets/kenney-mini.ttf', 'assets/kenney-mini-square-mono.ttf', 'assets/opendyslexic-400.woff2',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png',

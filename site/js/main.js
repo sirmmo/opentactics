@@ -10,6 +10,7 @@ import * as settings from './settings.js';
 import { rulesEditor, customRules, rulesFromHash } from './rules-editor.js';
 import * as i18n from './i18n.js';
 import * as share from './share.js';
+import * as cloud from './cloud.js';
 
 i18n.start();
 
@@ -111,6 +112,11 @@ async function mapLibrary() {
   } catch {
     list = (await fetchJson('maps/index.json')).map(m => ({ ...m, url: `maps/${m.id}.json` }));
   }
+  // Community maps from the online service, if there is one.
+  try {
+    const base = await cloud.api();
+    if (base) for (const m of await cloud.maps()) list.push({ ...m, id: `community:${m.id}`, url: `${base}/maps/${encodeURIComponent(m.id)}`, community: true });
+  } catch { /* offline, or no service */ }
   for (const m of urlMaps()) {
     if (!list.some(e => e.url && absUrl(e.url) === m.url)) list.push({ ...m, remote: true });
   }
@@ -527,6 +533,7 @@ function watchReplay(rec) {
 }
 
 function leaveEverything() {
+  if (room) cloud.unlistRoom(room.code);
   for (const t of hostTimers) clearInterval(t);
   hostTimers = [];
   match?.destroy();
@@ -693,7 +700,7 @@ async function setup(mode, preset = {}) {
   async function renderMaps() {
     try { library = await mapLibrary(); } catch (e) { showError(e); library = []; }
     mapList.replaceChildren(...library.map(entry => {
-      const tag = entry.local ? ' · yours' : entry.remote ? ' · from URL' : entry.shared ? ' · shared' : '';
+      const tag = entry.local ? ' · yours' : entry.remote ? ' · from URL' : entry.community ? ` · by ${entry.author || 'someone'}` : entry.shared ? ' · shared' : '';
       const card = h('button', { class: 'mapcard', 'data-name': entry.name, title: entry.remote ? `${entry.description || ''}\n${entry.url}`.trim() : entry.description || '' },
         h('div', { class: 'thumb' }), h('b', {}, entry.name), h('small', {}, `${entry.width}×${entry.height} · ${entry.players} players${tag}`));
       if (entry.remote) {
@@ -832,8 +839,14 @@ async function setup(mode, preset = {}) {
       if (tries < 20 && preset.resume) return new Promise(r => setTimeout(r, 3000)).then(() => open(tries + 1));
       throw e;
     });
+    // List the room on the online service, so strangers can find it.
+    const publicBox = h('label', { class: 'opt hidden' },
+      h('input', { type: 'checkbox', onchange: e => { cfg.listed = e.target.checked; advertise(); } }),
+      h('span', {}, 'List this room publicly', h('small', {}, 'Anyone can see it on the Join screen and take an open seat or watch.')));
+    cloud.api().then(base => { if (base) publicBox.classList.remove('hidden'); });
     open().then(peer => {
       room = { peer, code, guests: new Map() };
+      hostTimers.push(setInterval(advertise, 45000));
       if (match) { match.setNet(`Room ${code} is open again.`); hostNetStatus(); }
       const link = `${location.origin}${location.pathname}?join=${code}`;
       const timerSel = h('select', { onchange: e => { cfg.timer = +e.target.value; } },
@@ -844,9 +857,24 @@ async function setup(mode, preset = {}) {
         h('div', { class: 'row' }, h('input', { value: link, readonly: true, onfocus: e => e.target.select() }),
           h('button', { onclick: () => navigator.clipboard?.writeText(link) }, 'Copy link')),
         h('div', { class: 'row' }, h('span', { class: 'muted small' }, 'Turn timer'), timerSel),
+        publicBox,
         h('p', { class: 'muted small' }, 'Friends open the link, or choose Join online and type the code. Seats set to “Online player” fill in the order people arrive; anyone else can watch. When a turn runs out of time it ends by itself.'),
       );
     }).catch(e => { (match ? match.setNet(`Could not reopen room ${code}: ${e.message}`) : roomEl.replaceChildren(h('p', { class: 'error' }, `Could not open a room: ${e.message}`))); });
+  }
+
+  /** Tell the online service about this room (or take it off the list). */
+  function advertise() {
+    if (!room) return;
+    if (!cfg.listed) { if (cfg.wasListed) cloud.unlistRoom(room.code); cfg.wasListed = false; return; }
+    const st = match ? engine.call({ op: 'state' }).state : null;
+    cfg.wasListed = true;
+    cloud.listRoom(room.code, {
+      host: myName(), map: cfg.map?.name || '', rules: cfg.rulesName || '', options: optionsText(),
+      players: cfg.seats.length || cfg.map?.players || 2, open: cfg.seats.filter(s => s.kind === 'open').length,
+      started: !!match, day: st?.day || 0,
+    }).catch(e => console.warn('could not list the room', e));
+    if (st?.over) { cfg.listed = false; cloud.unlistRoom(room.code); }
   }
 
   function lobbyFor(token) {
@@ -875,6 +903,7 @@ async function setup(mode, preset = {}) {
   }
 
   function sendLobby() {
+    if (cfg.listed) advertise();
     if (!room || match) return;
     for (const g of room.guests.values()) if (g.conn.open) g.conn.send(lobbyFor(g.token));
   }
@@ -1142,10 +1171,25 @@ function joinScreen(code = '') {
   const lobby = h('div', { class: 'seats' });
   const go = h('button', { class: 'primary', onclick: () => connect() }, 'Join');
   const watchIn = h('input', { type: 'checkbox' });
+  const openRooms = h('div', { class: 'open-rooms' });
   app.replaceChildren(h('div', { class: 'join-screen' },
     h('header', { class: 'bar' }, h('button', { onclick: menu }, '← Back'), h('h2', {}, 'Join an online match')),
     h('div', { class: 'joinbox' }, h('label', {}, 'Room code', codeIn), h('label', {}, 'Your name', nameIn),
-      h('label', { class: 'opt' }, watchIn, h('span', {}, 'Just watch', h('small', {}, 'Follow the game without taking a seat.'))), go, status, lobby)));
+      h('label', { class: 'opt' }, watchIn, h('span', {}, 'Just watch', h('small', {}, 'Follow the game without taking a seat.'))), go, status, lobby, openRooms)));
+  // Rooms listed on the online service.
+  const showRooms = async () => {
+    if (!document.body.contains(openRooms) || guestLink) return;
+    if (!await cloud.api()) return;
+    let list = [];
+    try { list = await cloud.rooms(); } catch { return; }
+    openRooms.replaceChildren(h('h3', {}, 'Open rooms'), ...(list.length ? list.map(r => h('div', { class: 'room-row' },
+      h('span', {}, h('b', {}, r.map || '?'), h('small', { class: 'muted' }, ` · ${r.host || '?'} · ${r.players} players${r.options ? ` · ${r.options}` : ''}`)),
+      h('small', { class: 'muted' }, r.started ? `playing, day ${r.day}` : `${r.open} open seat${r.open === 1 ? '' : 's'}`),
+      h('button', { class: r.open && !r.started ? 'primary' : '', onclick: () => { codeIn.value = r.code; watchIn.checked = !r.open || !!r.started; connect(); } }, r.open && !r.started ? 'Join' : 'Watch')))
+      : [h('p', { class: 'muted small' }, 'No public rooms right now. Host one, or ask a friend for a code.')]));
+    setTimeout(showRooms, 10000);
+  };
+  showRooms();
   codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') connect(); });
 
   async function connect() {

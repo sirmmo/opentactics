@@ -1,3 +1,4 @@
+import { iceServers } from './cloud.js';
 // Browser-to-browser play over WebRTC. PeerJS only introduces the browsers;
 // after that, messages go straight from one to the other.
 //
@@ -34,9 +35,20 @@ function loadPeerJs() {
   }));
 }
 
-function openPeer(id) {
+// A TURN relay from the optional online service helps browsers on strict networks.
+let ice = null;
+async function peerOptions() {
+  ice ||= iceServers().catch(() => []);
+  const extra = await ice;
+  return extra.length
+    ? { debug: 1, config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, ...extra] } }
+    : { debug: 1 };
+}
+
+async function openPeer(id) {
+  const opts = await peerOptions();
   return new Promise((ok, fail) => {
-    const peer = id ? new Peer(id, { debug: 1 }) : new Peer({ debug: 1 });
+    const peer = id ? new Peer(id, opts) : new Peer(opts);
     const timer = setTimeout(() => fail(new Error('The introduction server did not answer.')), 15000);
     peer.on('open', () => { clearTimeout(timer); ok(peer); });
     peer.on('error', e => {
