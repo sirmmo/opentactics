@@ -17,6 +17,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # itch.io upload key (repository secret); without it the itch.io step is skipped.
+      BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -31,6 +34,13 @@ jobs:
           cp target/wasm32-unknown-unknown/wasm/opentactics.wasm site/opentactics.wasm
           touch site/.nojekyll
           sed -i "s/__BUILD__/${GITHUB_SHA::12}/" site/sw.js
+      - name: Publish to itch.io (sirmmo/opentactics, HTML5 channel)
+        if: github.ref == 'refs/heads/main' && env.BUTLER_API_KEY != ''
+        continue-on-error: true
+        run: |
+          curl -sSL -o butler.zip https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default
+          unzip -q butler.zip -d butler-bin && chmod +x butler-bin/butler
+          butler-bin/butler push site sirmmo/opentactics:html5 --userversion "${GITHUB_SHA::12}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

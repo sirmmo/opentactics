@@ -72,8 +72,10 @@ The `site/` folder (with `opentactics.wasm` copied in by `build.sh`) is a comple
 site. You can put it on any static host (GitHub Pages, a CDN, `python3 -m http.server`).
 Everything works there except publishing maps, which needs the Rust server.
 
-**Play online:** https://ingmmo.com/opentactics/. Each push to `main` runs
-`.github/workflows/pages.yml`, which tests the engine, builds the wasm and deploys `site/`.
+**Play online:** https://ingmmo.com/opentactics/ and https://sirmmo.itch.io/opentactics.
+Each push to `main` runs `.github/workflows/pages.yml`, which tests the engine, builds the
+wasm, deploys `site/` to GitHub Pages, and uploads the same files to itch.io with butler
+(channel `html5`; needs the `BUTLER_API_KEY` repository secret).
 
 ## Why 2D
 
