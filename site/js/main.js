@@ -9,6 +9,7 @@ import { statsFor } from './stats.js';
 import * as settings from './settings.js';
 import { rulesEditor, customRules, rulesFromHash } from './rules-editor.js';
 import * as i18n from './i18n.js';
+import * as share from './share.js';
 
 i18n.start();
 
@@ -383,6 +384,7 @@ async function openFile() {
 }
 
 function openDocument(doc) {
+  if (doc?.format === 'opentactics-pbl') return openLinkedGame(doc);
   if (doc?.format === 'opentactics-replay') return watchReplay(doc);
   if (doc?.format === 'opentactics-save') return continueSave(doc);
   alert('That file is not an OpenTactics replay or saved game.');
@@ -394,6 +396,67 @@ function downloadSave(rules, seats) {
   const a = h('a', { href: URL.createObjectURL(blob), download: `${st.state.name.replace(/\W+/g, '-').toLowerCase()}-day${st.state.day}.json` });
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---- playing by link ----
+
+/** The bundled rule set this is, if any (links then carry its name, not all of it). */
+async function bundledRulesId(rules) {
+  for (const b of BUNDLED_RULES) {
+    try { if (JSON.stringify(await fetchJson(b.url)) === JSON.stringify(rules)) return b.url; } catch { /* skip */ }
+  }
+  return null;
+}
+
+/** It is a friend's turn: hand over the game as a link (or a file). */
+async function sendTurn(m, rules, player) {
+  const rulesUrl = await bundledRulesId(rules);
+  const doc = {
+    format: 'opentactics-pbl', version: 1, rules: rulesUrl ? undefined : rules, rulesUrl,
+    seats: m.seats.map(st => ({ name: st.name, ai: !!st.ai, profile: st.profile })),
+    start: m.record.start, actions: m.record.actions,
+  };
+  const url = await share.link('game', doc);
+  const name = m.playerName(player);
+  const status = h('p', { class: 'muted small' });
+  const box = h('div', { class: 'send' },
+    h('div', { class: 'title big' }, `${name}'s turn`),
+    h('p', {}, `Send this link to whoever plays ${name}. They open it, play their turn, and send a link on.`),
+    h('input', { value: url, readonly: true, onfocus: e => e.target.select() }),
+    h('div', { class: 'row' },
+      h('button', { class: 'primary', onclick: async () => { const r = await share.offer(url, `OpenTactics: ${name}'s turn`); status.textContent = r === 'copied' ? 'Copied.' : r === 'shared' ? 'Shared.' : 'Select the link and copy it.'; } }, 'Copy or share the link'),
+      h('button', { onclick: () => { const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' })), download: `opentactics-${name.toLowerCase().replace(/\W+/g, '-')}-turn.json` }); a.click(); } }, 'Save as a file')),
+    url.length > 30000 ? h('p', { class: 'muted small' }, 'This link is long: if a chat app cuts it, send the file instead (Load replay or save opens it).') : null,
+    status,
+    h('button', { class: 'quiet', onclick: () => menu() }, 'Back to the menu'));
+  m.showOverlay(box);
+}
+
+/** Open a game someone sent by link (or file): play the turn of whoever is up. */
+async function openLinkedGame(doc) {
+  leaveEverything();
+  let rules;
+  try {
+    rules = doc.rulesUrl ? await fetchJson(doc.rulesUrl) : doc.rules;
+    engine.call({ op: 'load', rules, state: doc.start });
+    for (const [player, action] of doc.actions) engine.call({ op: 'act', player, action });
+  } catch (e) { return alert(`Could not open the game: ${e.message}`); }
+  const st = engine.call({ op: 'state' });
+  const turn = st.state.turn;
+  const seats = doc.seats.map((s, i) => (s.ai ? { name: s.name, ai: true, local: false, profile: s.profile }
+    : i === turn ? { name: s.name, local: true, ai: false } : { name: s.name, local: false, ai: false, mail: true }));
+  history.replaceState(null, '', location.pathname);
+  document.body.dataset.screen = 'play';
+  const root = h('div', { class: 'play-screen' });
+  app.replaceChildren(root);
+  match = new Match(root, {
+    engine, rules, state: st.state, income: st.income, seats, driver: true, onWatch: watchReplay, undoable: true,
+    onMailTurn: p => sendTurn(match, rules, p),
+    menu: [{ label: 'Leave to menu', action: () => { if (match.view.over || confirm('Leave this game? Opening the link again brings you back.')) menu(); } }],
+  });
+  match.income = st.income;
+  match.record = { start: doc.start, actions: doc.actions.slice() };
+  match.setNet(st.state.over ? 'This game is over.' : `Your turn as ${match.playerName(turn)}. When you end it, you get a link for the next player.`);
 }
 
 /** Carry on a saved game on this device. Online seats become seats for people here. */
@@ -730,7 +793,7 @@ async function setup(mode, preset = {}) {
     if (!cfg.map) return seatsEl.replaceChildren(h('p', { class: 'muted' }, 'Choose a map first.'));
     const kinds = mode === 'host'
       ? [['local', 'This browser'], ['open', 'Online player'], ['ai', 'Computer']]
-      : [['local', 'Human'], ['ai', 'Computer']];
+      : [['local', 'Human'], ['ai', 'Computer'], ['mail', 'Friend, by link']];
     seatsEl.replaceChildren(...cfg.seats.map((seat, i) => {
       const sel = h('select', {}, ...kinds.map(([v, label]) => h('option', { value: v, selected: seat.kind === v || (seat.kind === 'peer' && v === 'open') }, label)));
       sel.onchange = () => {
@@ -740,7 +803,8 @@ async function setup(mode, preset = {}) {
         renderSeats();
         sendLobby();
       };
-      const who = seat.kind === 'peer' ? `${seat.name}${seat.conn?.open ? '' : ' (gone)'}` : seat.kind === 'open' ? 'waiting…' : seat.kind === 'ai' ? 'Computer' : seat.name || 'You';
+      const who = seat.kind === 'peer' ? `${seat.name}${seat.conn?.open ? '' : ' (gone)'}` : seat.kind === 'open' ? 'waiting…' : seat.kind === 'ai' ? 'Computer'
+        : seat.kind === 'mail' ? 'Plays when you send a link' : seat.name || 'You';
       // How the computer plays this seat.
       seat.profile ||= { level: 'normal', style: 'balanced' };
       const brain = seat.kind === 'ai' ? h('span', { class: 'brain' },
@@ -961,6 +1025,9 @@ async function setup(mode, preset = {}) {
     }
     if (modeName === 'survival' && teamed) return showError(new Error('Survival makes its own teams: clear the team choices.'));
     const options = { ...rest, mode: gameMode, teams };
+    // Games by link take turns one at a time.
+    const byLink = cfg.seats.some(st => st.kind === 'mail');
+    if (byLink) options.simultaneous = false;
     let res;
     try {
       res = resume
@@ -969,7 +1036,7 @@ async function setup(mode, preset = {}) {
     } catch (e) { return showError(e); }
     document.body.dataset.screen = 'play';
     // Computers go by their army's name, so a big game's log stays readable.
-    const seats = cfg.seats.map((s, i) => ({ name: s.kind === 'ai' ? cfg.rules.factions[i].name : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai', profile: s.kind === 'ai' ? s.profile : undefined }));
+    const seats = cfg.seats.map((s, i) => ({ name: s.kind === 'ai' || s.kind === 'mail' ? cfg.rules.factions[i].name : s.name || 'Player', local: s.kind === 'local', ai: s.kind === 'ai', mail: s.kind === 'mail', profile: s.kind === 'ai' ? s.profile : undefined }));
     // In a local game with several humans, name them after their armies.
     seats.forEach((s, i) => { if (s.local && mode === 'local' && cfg.seats.filter(x => x.kind === 'local').length > 1) s.name = cfg.rules.factions[i].name; });
     const menuItems = [
@@ -992,6 +1059,7 @@ async function setup(mode, preset = {}) {
       engine, rules: cfg.rules, state: res.state, income: res.income, seats, driver: true, menu: menuItems, onWatch: watchReplay,
       chat: mode === 'host' ? (text, to) => broadcastChat(myName(), cfg.seats.findIndex(st => st.kind === 'local'), text, to) : undefined,
       undoable: mode !== 'host',
+      onMailTurn: p => sendTurn(match, cfg.rules, p),
       onApplied: (player, action, state, hash) => {
         if (mode !== 'host') return localSave(player, action, state);
         for (const g of room?.guests.values() || []) if (g.conn.open) g.conn.send({ t: 'act', player, action, h: hash });
@@ -1200,6 +1268,18 @@ async function boot() {
   };
   window.addEventListener('hashchange', openShared);
   if (await openShared()) return;
+  // A game sent by link (#game=…) or a replay (#replay=…).
+  const openLinks = async () => {
+    try {
+      const game = await share.unpack('game');
+      if (game) { openLinkedGame(game); return true; }
+      const replay = await share.unpack('replay');
+      if (replay) { history.replaceState(null, '', location.pathname); watchReplay(replay); return true; }
+    } catch (e) { alert(`Could not open the link: ${e.message}`); }
+    return false;
+  };
+  window.addEventListener('hashchange', openLinks);
+  if (await openLinks()) return;
   if (q.get('map') || q.get('rules')) {
     let rules;
     if (q.get('rules')) {

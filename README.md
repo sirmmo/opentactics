@@ -23,6 +23,9 @@ shape; they set the ground and the starting positions, not the rules.
 - **Missions**: four tutorial missions and four challenges with their own goals.
 - **Campaign**: "The Long Winter", five chapters with a story; veteran ranks (an option
   in any game) let your best survivors carry on, stronger, into the next chapter.
+- **Play by link**: no need to be online together. Seats can be a "Friend, by link":
+  when it is their turn you get a link (or a file) with the whole game; they open it,
+  play, and send a link on. Replays can be shared as links too. Nothing goes to a server.
 - **Single player comforts**: autosave and Continue, Undo (your actions this turn) and
   Hint (the hard computer suggests a move).
 - **Replays and stats**: every game can be watched again, saved as a file or opened

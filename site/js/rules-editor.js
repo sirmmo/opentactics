@@ -2,6 +2,8 @@
 // table), check it with the engine, keep it in this browser, download it, or share
 // it as a link. Every army still plays by the same rules: there is nothing per army.
 
+import { link, unpack } from './share.js';
+
 const STORE = 'ot.rules';
 
 /** Rule sets kept in this browser, by id. */
@@ -19,33 +21,8 @@ function saveCustom(doc) {
 
 // ---- links: the rule set, compressed, in the URL fragment ----
 
-const b64url = bytes => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-const unb64url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-
-async function pipe(bytes, stream) {
-  const out = new Blob([bytes]).stream().pipeThrough(stream);
-  return new Uint8Array(await new Response(out).arrayBuffer());
-}
-
-export async function rulesLink(doc) {
-  const json = new TextEncoder().encode(JSON.stringify(doc));
-  const url = new URL(location.pathname, location.href);
-  if (typeof CompressionStream === 'function') {
-    url.hash = `rules=${b64url(await pipe(json, new CompressionStream('deflate-raw')))}`;
-  } else {
-    url.hash = `rulesjson=${b64url(json)}`;
-  }
-  return url.href;
-}
-
-/** A rule set from a link's fragment, or null. */
-export async function rulesFromHash(hash = location.hash) {
-  const m = /^#(rules|rulesjson)=([A-Za-z0-9_-]+)$/.exec(hash);
-  if (!m) return null;
-  let bytes = unb64url(m[2]);
-  if (m[1] === 'rules') bytes = await pipe(bytes, new DecompressionStream('deflate-raw'));
-  return JSON.parse(new TextDecoder().decode(bytes));
-}
+export const rulesLink = doc => link('rules', doc);
+export const rulesFromHash = (hash = location.hash) => unpack('rules', hash);
 
 // ---- the screen ----
 

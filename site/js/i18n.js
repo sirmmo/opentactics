@@ -292,6 +292,12 @@ const IT = {
   'The capital. Their headquarters sits behind two factories on the east edge. Take it and the war is over. Lose ours and it is over the other way.': 'La capitale. Il loro quartier generale sta dietro due fabbriche sul bordo est. Prendilo e la guerra è finita. Perdi il nostro e finisce al contrario.',
   'The enemy here plays at its hardest. Your veterans are worth more than new units: keep them alive.': 'Qui il nemico gioca al massimo. I tuoi veterani valgono più delle unità nuove: tienili in vita.',
   'Mechs and infantry capture; tanks and artillery clear the way.': 'Bazooka e fanteria conquistano; carri e artiglieria aprono la strada.',
+  // ---- playing by link ----
+  'Friend, by link': 'Amico, via link', 'Plays when you send a link': 'Gioca quando gli mandi un link', 'Copy or share the link': 'Copia o condividi il link',
+  'Save as a file': 'Salva come file', 'Back to the menu': 'Torna al menu', 'Copied.': 'Copiato.', 'Shared.': 'Condiviso.', 'Select the link and copy it.': 'Seleziona il link e copialo.',
+  'This link is long: if a chat app cuts it, send the file instead (Load replay or save opens it).': 'Il link è lungo: se una chat lo taglia, manda il file (si apre con Carica replay o salvataggio).',
+  'Share replay link': 'Condividi il link del replay', 'Replay link copied.': 'Link del replay copiato.', 'Could not copy the link.': 'Impossibile copiare il link.',
+  'This game is over.': 'Questa partita è finita.', 'Leave this game? Opening the link again brings you back.': 'Lasci la partita? Riaprendo il link ci ritorni.',
   // ---- engine messages ----
   'It is not your turn.': 'Non è il tuo turno.', 'That unit has already acted.': 'Quell’unità ha già agito.', 'The unit cannot move there.': 'L’unità non può andare lì.',
   'That target is out of reach.': 'Quel bersaglio è fuori portata.', 'Not enough funds.': 'Fondi insufficienti.', 'That cannot be built there.': 'Non si può costruire lì.',
@@ -392,6 +398,9 @@ const IT_PATTERNS = [
   [/^Use the power (.+)\.$/, 'Usa il potere @1.'],
   [/^Rank (\d) · (\d+) XP$/, 'Grado $1 · $2 XP'],
   [/^(\d+) veterans? will join you in the next chapter\.$/, (m, n) => `${n} ${n === '1' ? 'veterano verrà' : 'veterani verranno'} con te nel prossimo capitolo.`],
+  [/^Send this link to whoever plays (.+)\. They open it, play their turn, and send a link on\.$/, 'Manda questo link a chi gioca con @1. Lo apre, gioca il suo turno e manda avanti un link.'],
+  [/^Your turn as (.+)\. When you end it, you get a link for the next player\.$/, 'Tocca a te come @1. Quando finisci il turno avrai un link per il prossimo giocatore.'],
+  [/^OpenTactics: (.+)'s turn$/, 'OpenTactics: turno di @1'],
   [/^Music: (on|off)$/, (m, a) => `Musica: ${a === 'on' ? 'sì' : 'no'}`],
   [/^(.+): (\d+) units(?: · (.+) active)?$/, (m, a, n, p) => `${name(a)}: ${n} unità${p ? ` · ${name(p)} attivo` : ''}`],
   [/^(.+) \((.)\)$/, (m, a, g) => (IT_WORDS[a] ? `${IT_WORDS[a]} (${g})` : null)],

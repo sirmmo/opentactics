@@ -11,6 +11,7 @@ import * as sound from './sound.js';
 import { snapshot, statsView } from './stats.js';
 import * as settings from './settings.js';
 import { tr } from './i18n.js';
+import * as share from './share.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -68,6 +69,7 @@ export class Match {
    * onWatch(record)  open the replay of this game
    * chat(text)  send a chat message (online games); shows a chat box
    * undoable  offer Undo (games with nobody online) and keep snapshots for it
+   * onMailTurn(player)  it is the turn of a seat played by link (seat.mail)
    */
   constructor(root, o) {
     Object.assign(this, o);
@@ -626,6 +628,13 @@ export class Match {
         clearTimeout(this.aiTimer);
         this.aiTimer = setTimeout(() => { if (!this.replayForward()) { this.playing = false; this.onReplayStep?.(); } }, 250);
       }
+      return;
+    }
+    // A friend playing by link is up: hand the game over.
+    const mailTurn = this.active().find(p => this.seats[p]?.mail);
+    if (this.driver && mailTurn != null && !this.busy && !this.active().some(p => this.locals.includes(p) || this.seats[p]?.ai)) {
+      const key = `${s.day}:${mailTurn}`;
+      if (this.mailShown !== key) { this.mailShown = key; this.onMailTurn?.(mailTurn); }
       return;
     }
     if (this.driver && this.active().some(p => this.seats[p]?.ai) && !this.busy) {
@@ -1375,10 +1384,23 @@ export class Match {
       h('button', { onclick: () => this.showStats() }, 'Stats'),
       this.onWatch && !this.replay ? h('button', { onclick: () => this.onWatch(this.replayRecord()) }, 'Watch replay') : null,
       !this.replay ? h('button', { onclick: () => this.downloadReplay() }, 'Save replay') : null,
+      !this.replay ? h('button', { onclick: () => this.shareReplay() }, 'Share replay link') : null,
       this.replay ? h('button', { onclick: () => this.menuEl.classList.add('hidden') }, 'Close') : null,
       ...(this.menu || []).map(m => h('button', { onclick: () => m.action() }, m.label)),
     );
     this.menuEl.classList.remove('hidden');
+  }
+
+  /** A panel over the board (for example: "send this link"). */
+  showOverlay(el) {
+    fill(this.menuEl, el);
+    this.menuEl.classList.remove('hidden');
+  }
+
+  async shareReplay() {
+    const url = await share.link('replay', this.replayRecord());
+    const r = await share.offer(url, `OpenTactics replay: ${this.view.name}`);
+    this.toast(r === 'failed' ? 'Could not copy the link.' : r === 'shared' ? 'Shared.' : 'Replay link copied.');
   }
 
   /** Everything needed to watch this game again. */
